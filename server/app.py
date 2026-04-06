@@ -1,6 +1,5 @@
 """
-FastAPI server — replace the contents of:
-    agentic_security_lab/server/app.py
+FastAPI server — exposes the environment over HTTP.
 """
 import os
 from fastapi import FastAPI
@@ -11,7 +10,7 @@ from models import (
     AgenticSecurityLabObservation,
     AgenticSecurityLabState,
 )
-from server.agentic_security_lab_environment import AgenticSecurityLabEnvironment
+from agentic_security_lab_environment import AgenticSecurityLabEnvironment
 
 TASK_NAME = os.getenv("TASK_NAME", "easy")
 
@@ -56,6 +55,7 @@ def state():
 @app.get("/health")
 def health():
     return {"status": "ok", "task": env.state.task_name}
+
 
 @app.get("/")
 def root():
