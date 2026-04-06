@@ -1,0 +1,91 @@
+spec_version: 1
+
+name: agentic-security-lab
+version: "1.0.0"
+description: >
+  Supply Chain Incident Response — an RL environment where an agent must
+  contain a real-world npm/PyPI supply chain attack by quarantining malicious
+  packages, rotating exposed secrets, and notifying affected teams before the
+  attacker exfiltrates credentials. Inspired by the Axios/LiteLLM/PhantomRaven
+  incidents of 2025–2026.
+
+type: step-reset
+
+tags:
+  - openenv
+  - security
+  - supply-chain
+  - devops
+  - incident-response
+
+tasks:
+  - name: easy
+    description: >
+      Single compromised package (axios@1.7.4), 2 secrets, 3 consumer teams.
+      Agent must inspect, quarantine, rotate, and notify within 14 steps.
+    difficulty: easy
+    max_steps: 20
+
+  - name: medium
+    description: >
+      Transitive dependency attack via form-data@4.0.1 (a dep of node-fetch).
+      Agent must trace the dependency graph to find the root package.
+      5 secrets, 12 consumer teams. 18-step exfiltration window.
+    difficulty: medium
+    max_steps: 25
+
+  - name: hard
+    description: >
+      PhantomRaven-style coordinated campaign: 5 slopsquatted packages,
+      8 secrets including CI/CD tokens, 20 consumer teams, attacker already
+      active. Race-against-the-clock with a 10-step exfiltration window.
+    difficulty: hard
+    max_steps: 35
+
+runtime:
+  type: docker
+  dockerfile: server/Dockerfile
+
+app:
+  port: 8000
+  startup_command: "uvicorn server.app:app --host 0.0.0.0 --port 8000"
+
+action_space:
+  type: structured
+  fields:
+    command:
+      type: string
+      enum:
+        - inspect_package
+        - check_dependents
+        - rotate_secret
+        - quarantine
+        - notify
+        - scan_logs
+        - conclude
+    parameters:
+      type: dict
+
+observation_space:
+  type: structured
+  fields:
+    success: bool
+    done: bool
+    reward: float
+    result: string
+    data: dict
+    incident_summary: string
+    steps_remaining: int
+    exposed_secrets: list[string]
+    active_malicious_packages: list[string]
+    error: optional[string]
+
+reward:
+  min: -1.0
+  max: 1.0
+  shaped: true
+  description: >
+    Dense reward on each correct action (quarantine +0.15, rotate critical +0.12,
+    notify +0.04, scan +0.02, inspect +0.01). Penalties for false positives and
+    invalid actions. Episode bonuses for full containment before exfiltration (+0.10)
+    and completing all required actions (+0.25 total). Attacker success penalty −0.20.

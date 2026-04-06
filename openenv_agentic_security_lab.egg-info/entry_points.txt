@@ -1,0 +1,2 @@
+[console_scripts]
+server = agentic_security_lab.server.app:main
