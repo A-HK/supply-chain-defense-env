@@ -10,7 +10,7 @@ from models import (
     AgenticSecurityLabObservation,
     AgenticSecurityLabState,
 )
-from agentic_security_lab_environment import AgenticSecurityLabEnvironment
+from server.agentic_security_lab_environment import AgenticSecurityLabEnvironment
 
 TASK_NAME = os.getenv("TASK_NAME", "easy")
 
