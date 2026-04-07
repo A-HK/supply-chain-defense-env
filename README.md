@@ -1,244 +1,255 @@
 ---
-title: Agentic Security Lab
-emoji: 🔒
-colorFrom: red
+title: Agentic Security Lab Environment Server
+emoji: ⌚
+colorFrom: blue
 colorTo: yellow
 sdk: docker
 pinned: false
+app_port: 8000
+base_path: /web
 tags:
   - openenv
-license: mit
-base_path: /web
 ---
 
-# Agentic Security Lab — Supply Chain Incident Response
+# Agentic Security Lab Environment
 
-An [OpenEnv](https://github.com/meta-pytorch/OpenEnv)-compatible RL environment where an agent acts as an on-call security engineer responding to a live npm/PyPI supply chain attack.
+A simple test environment that echoes back messages. Perfect for testing the env APIs as well as demonstrating environment usage patterns.
 
-Inspired by real 2025–2026 incidents: the **Axios npm compromise** (North Korean attribution), the **LiteLLM PyPI backdoor**, and the **PhantomRaven** slopsquatting campaign (126 malicious packages, 86,000 installs).
+## Quick Start
 
----
+The simplest way to use the Agentic Security Lab environment is through the `AgenticSecurityLabEnv` class:
 
-## Motivation
+```python
+from agentic_security_lab import AgenticSecurityLabAction, AgenticSecurityLabEnv
 
-Supply chain attacks are the highest-impact class of incident for engineering teams right now. When a maintainer account is hijacked, the blast radius spans hundreds of downstream services within minutes. Yet no RL benchmark trains agents to *respond* operationally — not just detect statically. This environment fills that gap by modelling what a senior security engineer actually does during an active incident: trace the dependency graph, contain the malicious package, rotate every exposed credential, and notify affected teams — before the attacker exfiltrates them.
+try:
+    # Create environment from Docker image
+    agentic_security_labenv = AgenticSecurityLabEnv.from_docker_image("agentic_security_lab-env:latest")
 
----
+    # Reset
+    result = agentic_security_labenv.reset()
+    print(f"Reset: {result.observation.echoed_message}")
 
-## Environment Description
+    # Send multiple messages
+    messages = ["Hello, World!", "Testing echo", "Final message"]
 
-At episode start, the agent receives an **incident alert** describing the attack scenario. It must issue a sequence of discrete actions to contain the threat. A simulated attacker runs on a countdown timer — if critical secrets are not rotated before the `exfiltration_step`, the attacker succeeds and the episode ends with a penalty.
+    for msg in messages:
+        result = agentic_security_labenv.step(AgenticSecurityLabAction(message=msg))
+        print(f"Sent: '{msg}'")
+        print(f"  → Echoed: '{result.observation.echoed_message}'")
+        print(f"  → Length: {result.observation.message_length}")
+        print(f"  → Reward: {result.reward}")
 
-The environment is fully deterministic and reproducible. The same task always produces the same scenario, enabling fair comparison across agents and runs.
+finally:
+    # Always clean up
+    agentic_security_labenv.close()
+```
 
----
+That's it! The `AgenticSecurityLabEnv.from_docker_image()` method handles:
+- Starting the Docker container
+- Waiting for the server to be ready
+- Connecting to the environment
+- Container cleanup when you call `close()`
 
-## Action Space
+## Building the Docker Image
 
-| Command | Parameters | Description |
-|---|---|---|
-| `inspect_package` | `{"package": "name@version"}` | View publisher, publish date, and IOC indicators |
-| `check_dependents` | `{"package": "name@version"}` | List all downstream consumer services |
-| `rotate_secret` | `{"secret": "SECRET_NAME"}` | Revoke and regenerate a named credential |
-| `quarantine` | `{"package": "name@version"}` | Yank the package version from the registry |
-| `notify` | `{"team": "team-name"}` | Send breach alert to a downstream team |
-| `scan_logs` | `{"package": "name@version"}` | Retrieve CI/CD log evidence and IOC patterns |
-| `conclude` | `{}` | Declare incident contained — ends the episode |
+Before using the environment, you need to build the Docker image:
 
----
+```bash
+# From project root
+docker build -t agentic_security_lab-env:latest -f server/Dockerfile .
+```
 
-## Observation Space
+## Deploying to Hugging Face Spaces
 
-Each `step()` and `reset()` returns:
+You can easily deploy your OpenEnv environment to Hugging Face Spaces using the `openenv push` command:
 
-| Field | Type | Description |
-|---|---|---|
-| `success` | `bool` | Whether the action succeeded |
-| `done` | `bool` | Whether the episode has ended |
-| `reward` | `float` | Per-step reward signal |
-| `result` | `str` | Human-readable description of the action outcome |
-| `data` | `dict` | Structured output (metadata, dep list, log lines) |
-| `incident_summary` | `str` | Running dashboard: step count, quarantined, rotated, notified |
-| `steps_remaining` | `int` | Steps before attacker completes exfiltration |
-| `exposed_secrets` | `list[str]` | Secret names not yet rotated |
-| `active_malicious_packages` | `list[str]` | Malicious packages not yet quarantined |
-| `error` | `str or None` | Set when the action was invalid |
+```bash
+# From the environment directory (where openenv.yaml is located)
+openenv push
 
----
+# Or specify options
+openenv push --namespace my-org --private
+```
 
-## Reward Function
-
-Dense reward signal across the full trajectory — not sparse end-of-episode.
-
-**Per-step rewards:**
-
-| Action | Reward |
-|---|---|
-| Quarantine correct malicious package | +0.15 |
-| Rotate critical secret | +0.12 |
-| Rotate non-critical secret | +0.06 |
-| Notify affected team | +0.04 |
-| scan_logs (returns intel) | +0.02 |
-| inspect_package | +0.01 |
-| check_dependents | +0.01 |
-| Quarantine clean package (false positive) | -0.05 |
-| Rotate already-rotated secret | -0.02 |
-| Invalid / unknown command | -0.01 |
-
-**Episode bonuses (awarded on `conclude`):**
-
-| Condition | Bonus |
-|---|---|
-| All required packages quarantined | +0.10 |
-| All required secrets rotated | +0.10 |
-| All required teams notified | +0.05 |
-| Incident contained before exfiltration deadline | +0.10 |
-| Attacker successfully exfiltrated credentials | -0.20 |
-
----
-
-## Tasks
-
-### easy — Single Package Compromise
-
-A single npm package (`axios@1.7.4`) was hijacked via a compromised maintainer account. Two secrets are at risk. Three downstream consumer services are affected. The exfiltration window is 14 steps.
-
-- Packages in scope: `axios@1.7.4` (malicious), `axios@1.7.3` (clean)
-- Secrets: `STRIPE_SECRET_KEY` (critical), `INTERNAL_API_TOKEN`
-- Teams to notify: `payments-service`, `auth-service`, `api-gateway`
-- Expected difficulty: Solvable by a prompted frontier model
-- Optimal cumulative reward: ~0.80
-
-### medium — Transitive Dependency Attack
-
-`form-data@4.0.1` was backdoored but is not a direct dependency — it is a dependency of `node-fetch`. The agent must trace the graph to identify the root malicious package. Five secrets exposed. Twelve consumer teams affected. Exfiltration window is 18 steps.
-
-- Root cause: `form-data@4.0.1` (not `node-fetch@3.3.2`)
-- Secrets: AWS keys, SendGrid, Postgres password, webhook signing secret
-- Teams to notify: 12 services including `data-pipeline`, `email-sender`, `crm-sync`
-- Expected difficulty: Requires multi-hop dependency reasoning
-- Optimal cumulative reward: ~1.52
-
-### hard — PhantomRaven Coordinated Campaign
-
-Five slopsquatted packages published by the same actor cluster. CI/CD tokens (`NPM_TOKEN`, `GITHUB_ACTIONS_TOKEN`) are already being exfiltrated. The attacker has a 10-step head start. Eight secrets, twenty consumer teams. Frontier models will struggle to complete this within budget.
-
-- Malicious packages: `1odash@4.17.21`, `expresss@4.18.2`, `axios-http@1.7.4`, `node-fetch-lite@3.3.2`, `dotenvv@16.0.3`
-- Secrets: 6 critical including AWS keys, DB connection string, JWT secret
-- Teams to notify: 20 services across 5 package dependency trees
-- Expected difficulty: Genuinely challenges frontier models
-- Optimal cumulative reward: ~2.74
-
----
-
-## Setup and Usage
+The `openenv push` command will:
+1. Validate that the directory is an OpenEnv environment (checks for `openenv.yaml`)
+2. Prepare a custom build for Hugging Face Docker space (enables web interface)
+3. Upload to Hugging Face (ensuring you're logged in)
 
 ### Prerequisites
 
-```bash
-pip install openenv-core
-```
+- Authenticate with Hugging Face: The command will prompt for login if not already authenticated
 
-### Run locally with uv
+### Options
 
-```bash
-cd agentic_security_lab
-uv sync
-uv run uvicorn server.app:app --host 0.0.0.0 --port 8000 --reload
-```
+- `--directory`, `-d`: Directory containing the OpenEnv environment (defaults to current directory)
+- `--repo-id`, `-r`: Repository ID in format 'username/repo-name' (defaults to 'username/env-name' from openenv.yaml)
+- `--base-image`, `-b`: Base Docker image to use (overrides Dockerfile FROM)
+- `--private`: Deploy the space as private (default: public)
 
-### Run with Docker
+### Examples
 
 ```bash
-docker build -t agentic-security-lab .
-docker run -p 8000:8000 agentic-security-lab
+# Push to your personal namespace (defaults to username/env-name from openenv.yaml)
+openenv push
+
+# Push to a specific repository
+openenv push --repo-id my-org/my-env
+
+# Push with a custom base image
+openenv push --base-image ghcr.io/meta-pytorch/openenv-base:latest
+
+# Push as a private space
+openenv push --private
+
+# Combine options
+openenv push --repo-id my-org/my-env --base-image custom-base:latest --private
 ```
 
-### Smoke test
+After deployment, your space will be available at:
+`https://huggingface.co/spaces/<repo-id>`
+
+The deployed space includes:
+- **Web Interface** at `/web` - Interactive UI for exploring the environment
+- **API Documentation** at `/docs` - Full OpenAPI/Swagger interface
+- **Health Check** at `/health` - Container health monitoring
+- **WebSocket** at `/ws` - Persistent session endpoint for low-latency interactions
+
+## Environment Details
+
+### Action
+**AgenticSecurityLabAction**: Contains a single field
+- `message` (str) - The message to echo back
+
+### Observation
+**AgenticSecurityLabObservation**: Contains the echo response and metadata
+- `echoed_message` (str) - The message echoed back
+- `message_length` (int) - Length of the message
+- `reward` (float) - Reward based on message length (length × 0.1)
+- `done` (bool) - Always False for echo environment
+- `metadata` (dict) - Additional info like step count
+
+### Reward
+The reward is calculated as: `message_length × 0.1`
+- "Hi" → reward: 0.2
+- "Hello, World!" → reward: 1.3
+- Empty message → reward: 0.0
+
+## Advanced Usage
+
+### Connecting to an Existing Server
+
+If you already have a Agentic Security Lab environment server running, you can connect directly:
+
+```python
+from agentic_security_lab import AgenticSecurityLabEnv
+
+# Connect to existing server
+agentic_security_labenv = AgenticSecurityLabEnv(base_url="<ENV_HTTP_URL_HERE>")
+
+# Use as normal
+result = agentic_security_labenv.reset()
+result = agentic_security_labenv.step(AgenticSecurityLabAction(message="Hello!"))
+```
+
+Note: When connecting to an existing server, `agentic_security_labenv.close()` will NOT stop the server.
+
+### Using the Context Manager
+
+The client supports context manager usage for automatic connection management:
+
+```python
+from agentic_security_lab import AgenticSecurityLabAction, AgenticSecurityLabEnv
+
+# Connect with context manager (auto-connects and closes)
+with AgenticSecurityLabEnv(base_url="http://localhost:8000") as env:
+    result = env.reset()
+    print(f"Reset: {result.observation.echoed_message}")
+    # Multiple steps with low latency
+    for msg in ["Hello", "World", "!"]:
+        result = env.step(AgenticSecurityLabAction(message=msg))
+        print(f"Echoed: {result.observation.echoed_message}")
+```
+
+The client uses WebSocket connections for:
+- **Lower latency**: No HTTP connection overhead per request
+- **Persistent session**: Server maintains your environment state
+- **Efficient for episodes**: Better for many sequential steps
+
+### Concurrent WebSocket Sessions
+
+The server supports multiple concurrent WebSocket connections. To enable this,
+modify `server/app.py` to use factory mode:
+
+```python
+# In server/app.py - use factory mode for concurrent sessions
+app = create_app(
+    AgenticSecurityLabEnvironment,  # Pass class, not instance
+    AgenticSecurityLabAction,
+    AgenticSecurityLabObservation,
+    max_concurrent_envs=4,  # Allow 4 concurrent sessions
+)
+```
+
+Then multiple clients can connect simultaneously:
+
+```python
+from agentic_security_lab import AgenticSecurityLabAction, AgenticSecurityLabEnv
+from concurrent.futures import ThreadPoolExecutor
+
+def run_episode(client_id: int):
+    with AgenticSecurityLabEnv(base_url="http://localhost:8000") as env:
+        result = env.reset()
+        for i in range(10):
+            result = env.step(AgenticSecurityLabAction(message=f"Client {client_id}, step {i}"))
+        return client_id, result.observation.message_length
+
+# Run 4 episodes concurrently
+with ThreadPoolExecutor(max_workers=4) as executor:
+    results = list(executor.map(run_episode, range(4)))
+```
+
+## Development & Testing
+
+### Direct Environment Testing
+
+Test the environment logic directly without starting the HTTP server:
 
 ```bash
-curl -X POST http://localhost:8000/reset \
-  -H "Content-Type: application/json" \
-  -d '{"task_name": "easy"}'
-
-curl -X POST http://localhost:8000/step \
-  -H "Content-Type: application/json" \
-  -d '{"command": "inspect_package", "parameters": {"package": "axios@1.7.4"}}'
-
-curl http://localhost:8000/state
+# From the server directory
+python3 server/agentic_security_lab_environment.py
 ```
 
-### Run inference baseline
+This verifies that:
+- Environment resets correctly
+- Step executes actions properly
+- State tracking works
+- Rewards are calculated correctly
+
+### Running Locally
+
+Run the server locally for development:
 
 ```bash
-set API_BASE_URL=https://api.groq.com/openai/v1
-set MODEL_NAME=llama-3.3-70b-versatile
-set HF_TOKEN=gsk_your_groq_key
-set ENV_BASE_URL=http://localhost:8000
-python inference.py
+uvicorn server.app:app --reload
 ```
-
-### Validate and deploy
-
-```bash
-openenv validate
-openenv push --repo-id your-username/agentic-security-lab
-```
-
----
 
 ## Project Structure
 
 ```
 agentic_security_lab/
-├── models.py                          # Typed Pydantic Action / Observation / State
-├── scenarios.py                       # Deterministic task definitions
-├── client.py                          # Sync HTTP client
-├── inference.py                       # Baseline inference script
-├── openenv.yaml                       # OpenEnv manifest (pure YAML, no frontmatter)
-├── pyproject.toml
-├── uv.lock
-├── Dockerfile
-├── README.md                          # HF Space frontmatter lives here
+├── .dockerignore         # Docker build exclusions
+├── __init__.py            # Module exports
+├── README.md              # This file
+├── openenv.yaml           # OpenEnv manifest
+├── pyproject.toml         # Project metadata and dependencies
+├── uv.lock                # Locked dependencies (generated)
+├── client.py              # AgenticSecurityLabEnv client
+├── models.py              # Action and Observation models
 └── server/
-    ├── __init__.py
-    ├── app.py
-    ├── agentic_security_lab_environment.py
-    └── requirements.txt
+    ├── __init__.py        # Server module exports
+    ├── agentic_security_lab_environment.py  # Core environment logic
+    ├── app.py             # FastAPI application (HTTP + WebSocket endpoints)
+    └── Dockerfile         # Container image definition
 ```
-
----
-
-## API Endpoints
-
-| Method | Path | Description |
-|---|---|---|
-| POST | `/reset` | Reset environment. Body: `{"task_name": "easy/medium/hard"}` |
-| POST | `/step` | Take an action. Body: `{"command": "...", "parameters": {...}}` |
-| GET | `/state` | Full internal episode state |
-| GET | `/health` | Health check |
-| GET | `/` | Environment metadata |
-
----
-
-## Baseline Scores
-
-Collected with `llama-3.3-70b-versatile` via Groq, temperature=0.2, MAX_STEPS=30:
-
-| Task | Score (0-1) | Notes |
-|---|---|---|
-| easy | 0.42 | Correctly quarantines and rotates; misses some notify steps |
-| medium | 0.28 | Struggles to trace transitive dep to root cause |
-| hard | 0.14 | Overwhelmed by 5-package scope and 10-step head start |
-
----
-
-## Environment Variables
-
-| Variable | Required | Description |
-|---|---|---|
-| `API_BASE_URL` | Yes | LLM API endpoint |
-| `MODEL_NAME` | Yes | Model identifier |
-| `HF_TOKEN` | Yes | API key (Groq key or HF token) |
-| `ENV_BASE_URL` | Yes in production | Your HF Space URL |
-| `TASK_NAME` | No | Run single task: easy, medium, or hard |
