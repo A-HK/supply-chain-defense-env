@@ -30,6 +30,7 @@ ENV_BASE_URL = os.getenv("ENV_BASE_URL", "http://localhost:8000")
 ALL_TASKS = ["easy", "medium", "hard"]
 MAX_STEPS = 30
 BENCHMARK = "agentic-security-lab"
+SCORE_EPS = 1e-6
 
 SYSTEM_PROMPT = textwrap.dedent("""
     You are an expert security engineer responding to a supply-chain incident.
@@ -76,7 +77,7 @@ def log_end(success: bool, steps: int, score: float,
     rewards_str = ",".join(f"{r:.2f}" for r in rewards)
     print(
         f"[END] success={str(success).lower()} steps={steps} "
-        f"score={score:.2f} rewards={rewards_str}",
+        f"score={score:.6f} rewards={rewards_str}",
         flush=True,
     )
 
@@ -166,8 +167,9 @@ def run_task(llm: OpenAI, http: httpx.Client, task_name: str) -> float:
             "hard": grade_hard,
         }
         score = graders[task_name](final_state)
+        score = max(SCORE_EPS, min(1.0 - SCORE_EPS, score))
         success = (
-            score >= 1.0
+            score >= 1.0 - SCORE_EPS
             and not bool(final_state.get("attacker_succeeded", False))
         )
 
