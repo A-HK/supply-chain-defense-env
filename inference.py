@@ -20,10 +20,8 @@ from typing import Optional
 
 import httpx
 from openai import OpenAI
+from graders import grade_easy, grade_hard, grade_medium
 
-# ── Configuration ──────────────────────────────────────────────────────────────
-# Defaults match what the hackathon validator injects.
-# HF_TOKEN is set automatically by the validator — do not hardcode it.
 API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
 MODEL_NAME   = os.getenv("MODEL_NAME",   "Qwen/Qwen2.5-7B-Instruct")
 API_KEY      = os.getenv("HF_TOKEN") or os.getenv("API_KEY") or ""
@@ -59,8 +57,6 @@ SYSTEM_PROMPT = textwrap.dedent("""
 """).strip()
 
 
-# ── Logging helpers ────────────────────────────────────────────────────────────
-
 def log_start(task: str, model: str) -> None:
     print(f"[START] task={task} env={BENCHMARK} model={model}", flush=True)
 
@@ -85,8 +81,6 @@ def log_end(success: bool, steps: int, score: float,
     )
 
 
-# ── Environment helpers ────────────────────────────────────────────────────────
-
 def env_reset(http: httpx.Client, task_name: str) -> dict:
     r = http.post("/reset", json={"task_name": task_name})
     r.raise_for_status()
@@ -99,7 +93,11 @@ def env_step(http: httpx.Client, command: str, parameters: dict) -> dict:
     return r.json()
 
 
-# ── Action parsing ─────────────────────────────────────────────────────────────
+def env_state(http: httpx.Client) -> dict:
+    r = http.get("/state")
+    r.raise_for_status()
+    return r.json()
+
 
 def parse_action(raw: str) -> tuple:
     text = raw.strip()
@@ -112,8 +110,6 @@ def parse_action(raw: str) -> tuple:
     except (json.JSONDecodeError, AttributeError):
         return "conclude", {}
 
-
-# ── Episode runner ─────────────────────────────────────────────────────────────
 
 def run_task(llm: OpenAI, http: httpx.Client, task_name: str) -> float:
     rewards = []
@@ -133,7 +129,6 @@ def run_task(llm: OpenAI, http: httpx.Client, task_name: str) -> float:
 
         for step_n in range(1, MAX_STEPS + 1):
 
-            # ── LLM call — wrapped so a transient API error doesn't crash ──
             try:
                 resp = llm.chat.completions.create(
                     model       = MODEL_NAME,
@@ -143,14 +138,12 @@ def run_task(llm: OpenAI, http: httpx.Client, task_name: str) -> float:
                 )
                 raw = resp.choices[0].message.content or ""
             except Exception as llm_err:
-                # Treat LLM failure as a no-op conclude to end gracefully
                 raw = '{"command": "conclude", "parameters": {}}'
-                print(f"[DEBUG] LLM error at step {step_n}: {llm_err}", flush=True)
+                _ = llm_err
 
             command, params = parse_action(raw)
             action_str      = json.dumps({"command": command, "parameters": params})
 
-            # ── Environment step ───────────────────────────────────────────
             obs    = env_step(http, command, params)
             reward = float(obs.get("reward", 0.0))
             done   = bool(obs.get("done", False))
@@ -166,19 +159,25 @@ def run_task(llm: OpenAI, http: httpx.Client, task_name: str) -> float:
             if done:
                 break
 
-        score   = min(1.0, max(0.0, sum(rewards)))
-        success = score > 0.0
+        final_state = env_state(http)
+        graders = {
+            "easy": grade_easy,
+            "medium": grade_medium,
+            "hard": grade_hard,
+        }
+        score = graders[task_name](final_state)
+        success = (
+            score >= 1.0
+            and not bool(final_state.get("attacker_succeeded", False))
+        )
 
-    except Exception as exc:
-        # Always emit [END] — even on unexpected failure
+    except Exception:
         log_end(success=False, steps=step_n, score=0.0, rewards=rewards)
-        raise
+        return 0.0
 
     log_end(success=success, steps=step_n, score=score, rewards=rewards)
     return score
 
-
-# ── Entry point ────────────────────────────────────────────────────────────────
 
 def main() -> None:
     llm  = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
@@ -187,16 +186,11 @@ def main() -> None:
     task_env = os.getenv("TASK_NAME", "")
     tasks    = [task_env] if task_env in ALL_TASKS else ALL_TASKS
 
-    scores = {}
     try:
         for task in tasks:
-            scores[task] = run_task(llm, http, task)
+            run_task(llm, http, task)
     finally:
         http.close()
-
-    print("\n=== Baseline Results ===", flush=True)
-    for task, s in scores.items():
-        print(f"  {task:8s}  score={s:.2f}", flush=True)
 
 
 if __name__ == "__main__":

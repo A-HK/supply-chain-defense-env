@@ -52,8 +52,6 @@ class AgenticSecurityLabEnvironment:
         self._state     = AgenticSecurityLabState()
         self._scenario: dict[str, Any] = {}
 
-    # ── OpenEnv interface ──────────────────────────────────────────────────────
-
     def reset(self, task_name: str | None = None) -> AgenticSecurityLabObservation:
         if task_name:
             self._task_name = task_name
@@ -98,14 +96,12 @@ class AgenticSecurityLabEnvironment:
     def step(self, action: AgenticSecurityLabAction) -> AgenticSecurityLabObservation:
         s = self._state
 
-        # Guard: episode already over
         if s.incident_contained or s.attacker_succeeded or s.step_count >= s.max_steps:
             return self._terminal_obs(0.0)
 
         s.step_count += 1
         steps_left = max(0, s.exfiltration_step - s.step_count)
 
-        # Check attacker exfiltration trigger
         if s.step_count >= s.exfiltration_step and not s.attacker_succeeded:
             crit_exposed = [
                 k for k, v in s.secrets.items()
@@ -128,7 +124,6 @@ class AgenticSecurityLabEnvironment:
                 error   = f"Invalid command: {cmd}",
             )
 
-        # Dispatch
         dispatch = {
             "inspect_package":  self._cmd_inspect,
             "check_dependents": self._cmd_check_dependents,
@@ -143,8 +138,6 @@ class AgenticSecurityLabEnvironment:
     @property
     def state(self) -> AgenticSecurityLabState:
         return self._state
-
-    # ── Command handlers ───────────────────────────────────────────────────────
 
     def _cmd_inspect(self, params: dict, steps_left: int) -> AgenticSecurityLabObservation:
         pkg = params.get("package", "")
@@ -348,8 +341,6 @@ class AgenticSecurityLabEnvironment:
             f"Total episode reward : {s.total_reward:.3f}"
         )
         return self._terminal_obs(bonus, result=result)
-
-    # ── Helpers ────────────────────────────────────────────────────────────────
 
     def _build_obs(
         self,

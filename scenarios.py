@@ -11,7 +11,6 @@ from typing import Any
 
 SCENARIOS: dict[str, dict[str, Any]] = {
 
-    # ── EASY ──────────────────────────────────────────────────────────────────
     "easy": {
         "description": (
             "A single npm package 'axios' was compromised via a hijacked "
@@ -69,7 +68,6 @@ SCENARIOS: dict[str, dict[str, Any]] = {
         },
     },
 
-    # ── MEDIUM ────────────────────────────────────────────────────────────────
     "medium": {
         "description": (
             "A transitive dependency attack. 'node-fetch' is clean, but "
@@ -151,7 +149,6 @@ SCENARIOS: dict[str, dict[str, Any]] = {
         },
     },
 
-    # ── HARD ──────────────────────────────────────────────────────────────────
     "hard": {
         "description": (
             "A coordinated PhantomRaven-style campaign. Five malicious packages "
@@ -163,10 +160,8 @@ SCENARIOS: dict[str, dict[str, Any]] = {
         "max_steps": 35,
         "exfiltration_step": 10,   # attacker is ALREADY active — tight window
         "packages": {
-            # Legitimate packages
             "lodash@4.17.21":         {"compromised": False, "malicious": False, "publish_date": "2021-02-20", "publisher": "lodash-team",    "iocs": [], "versions": ["4.17.21"]},
             "express@4.18.2":         {"compromised": False, "malicious": False, "publish_date": "2023-08-15", "publisher": "express-team",   "iocs": [], "versions": ["4.18.2"]},
-            # Malicious packages (slopsquatted names)
             "1odash@4.17.21":         {"compromised": True,  "malicious": True,  "publish_date": "2026-03-25", "publisher": "phantom-actor-1", "iocs": ["exfil npm token to 45.33.32.156"], "versions": ["4.17.21"]},
             "expresss@4.18.2":        {"compromised": True,  "malicious": True,  "publish_date": "2026-03-26", "publisher": "phantom-actor-2", "iocs": ["reads ~/.npmrc and POSTs to attacker endpoint"], "versions": ["4.18.2"]},
             "axios-http@1.7.4":       {"compromised": True,  "malicious": True,  "publish_date": "2026-03-27", "publisher": "phantom-actor-1", "iocs": ["base64 env dump to pastebin clone"], "versions": ["1.7.4"]},

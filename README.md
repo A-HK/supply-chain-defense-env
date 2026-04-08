@@ -18,15 +18,17 @@ tags:
 
 Train and evaluate agents on a high-stakes, real-world workflow: **responding to a confirmed software supply chain compromise before attacker exfiltration succeeds**.
 
-This environment is inspired by modern npm ecosystem incidents (compromised maintainer accounts, slopsquatted packages, CI token theft campaigns). The agent is not doing passive detection. It must **actively coordinate incident response** over multiple steps with changing state and deadline pressure.
+When a dependency gets compromised, teams do not fail because they cannot detect one IOC. They fail because containment is a sequence problem: what to quarantine first, which secrets to rotate immediately, who to notify, and how to do it before the attacker cashes out.
+
+This environment models that exact pressure. The agent is not doing passive detection. It must **actively coordinate incident response** over multiple steps with changing state, incomplete information, and deadline pressure.
 
 ## Recent Threat Context
 
-This benchmark is grounded in the same incident patterns teams are dealing with now:
+This benchmark is grounded in publicly reported incident patterns teams are dealing with now:
 
-- **Axios package compromise reports** highlighted how a single compromised maintainer flow can rapidly expose secrets across many downstream services.
-- **LiteLLM package compromise reports** reinforced that AI tooling dependencies can become a supply-chain entry point with broad blast radius in production systems.
-- **Multi-package npm campaigns** (e.g., credential theft clusters) showed attackers combining slopsquatting, token theft, and CI/CD exfiltration.
+- **Axios npm compromise**: public postmortems and threat-intel writeups describe malicious Axios versions published from a compromised maintainer account, with downstream credential risk at scale. See [axios maintainer postmortem](http://github.com/axios/axios/issues/10636), [Microsoft analysis](https://www.microsoft.com/en-us/security/blog/2026/04/01/mitigating-the-axios-npm-supply-chain-compromise/), and [Endor Labs report](https://www.endorlabs.com/learn/npm-axios-compromise).
+- **LiteLLM PyPI compromise**: maintainers and advisories documented malicious LiteLLM releases tied to credential theft behavior and urgent secret rotation guidance. See [LiteLLM incident thread](https://github.com/BerriAI/litellm/issues/24518), [LiteLLM security update](https://docs.litellm.ai/blog/security-update-march-2026), and [GitLab advisory](https://advisories.gitlab.com/pkg/pypi/litellm/GHSA-5mg7-485q-xm76/).
+- **PhantomRaven-style npm campaigns**: large multi-package credential theft operations emphasize how attackers blend slopsquatting, token theft, and CI/CD secret exfiltration. See [Sonatype coverage](https://www.sonatype.com/blog/phantomraven-npm-malware) and [OSSF malicious-packages tracking](https://github.com/ossf/malicious-packages/issues/1166).
 
 Agentic Security Lab operationalizes these patterns into deterministic tasks where action ordering directly changes containment outcomes.
 
@@ -116,6 +118,43 @@ Episode-end bonuses (on `conclude`/terminal):
 - all required teams notified: `+0.05`
 - contained before exfiltration: `+0.10`
 - attacker succeeds: `-0.20`
+
+## Grader Definition (Deterministic)
+
+Task-level grading is deterministic and normalized to `[0, 1]` using explicit component completion ratios from final `state`.
+
+For each task (`easy`, `medium`, `hard`), required sets are fixed:
+- required malicious packages to quarantine,
+- required secrets to rotate,
+- required teams to notify.
+
+Component ratios:
+- `quarantine_ratio = |quarantined ∩ required_quarantine| / |required_quarantine|`
+- `rotate_ratio = |rotated_secrets ∩ required_rotate_secret| / |required_rotate_secret|`
+- `notify_ratio = |notified_teams ∩ required_notify| / |required_notify|`
+- `contain_ratio = 1.0 if attacker_succeeded == false else 0.0`
+
+Final score:
+
+`score = 0.35 * quarantine_ratio + 0.35 * rotate_ratio + 0.20 * notify_ratio + 0.10 * contain_ratio`
+
+Implementation details:
+- score is clamped to `[0, 1]`,
+- score is rounded to 6 decimals,
+- same state always yields the same score (no randomness).
+
+Worked example (`medium`):
+- required: `1` quarantine, `5` secret rotations, `12` notifications
+- achieved: `1` quarantine, `4` secret rotations, `9` notifications
+- attacker did **not** succeed
+
+Then:
+- `quarantine_ratio = 1/1 = 1.00`
+- `rotate_ratio = 4/5 = 0.80`
+- `notify_ratio = 9/12 = 0.75`
+- `contain_ratio = 1.00`
+
+`score = 0.35*(1.00) + 0.35*(0.80) + 0.20*(0.75) + 0.10*(1.00) = 0.88`
 
 ## Quick Start
 
