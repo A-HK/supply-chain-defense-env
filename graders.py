@@ -2,7 +2,10 @@
 
 from typing import Any
 
-from .models import AgenticSecurityLabState
+try:
+    from .models import AgenticSecurityLabState
+except ImportError:
+    from models import AgenticSecurityLabState
 
 _REQUIRED: dict[str, dict[str, list[str]]] = {
     "easy": {
