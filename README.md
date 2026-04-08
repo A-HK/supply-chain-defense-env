@@ -95,6 +95,12 @@ Each step returns:
 - `active_malicious_packages`: malicious packages not yet quarantined
 - `error`: optional action error reason
 
+The `data` field includes evaluator-facing telemetry:
+- `reward_type`: always `training_step_reward`
+- `benchmark_score`: deterministic task score computed from current state
+- `score_breakdown`: component ratios (`quarantine`, `rotate`, `notify`, `contain`)
+- `evaluator_metrics`: audit-friendly counts (invalid actions, fallback use, false positives, deadline status)
+
 ## Reward Design
 
 Dense reward shaping provides trajectory-level signal, not just terminal binary success.
@@ -118,6 +124,35 @@ Episode-end bonuses (on `conclude`/terminal):
 - all required teams notified: `+0.05`
 - contained before exfiltration: `+0.10`
 - attacker succeeds: `-0.20`
+
+## Mode and Fallback Architecture
+
+The environment supports explicit execution modes and safe fallbacks:
+
+- `mode=benchmark` (default): deterministic evaluation behavior for leaderboard runs.
+- `mode=training`: same state transitions with evaluator telemetry preserved for training analysis.
+- Unsupported mode values safely fallback to `benchmark`, and `mode_fallback_used=true` is exposed in `state` and `data.evaluator_metrics`.
+
+Command fallback can be enabled for robustness:
+- aliases like `inspect`, `deps`, `dependents`, `rotate` map to canonical commands.
+- fallback usage is counted in `command_fallback_used_count`.
+
+You can set defaults via environment variables:
+- `AGENTIC_SECURITY_LAB_MODE=benchmark|training`
+- `AGENTIC_SECURITY_LAB_COMMAND_FALLBACK=true|false`
+
+Or override at runtime via `POST /reset` body:
+- `mode`
+- `command_fallback_enabled`
+
+## Training Reward vs Benchmark Score
+
+The environment now separates learning signal from benchmark evaluation:
+
+- `reward` (per-step): **training reward** used for RL trajectories.
+- `benchmark_score` (in `observation.data`): deterministic score for evaluator reporting.
+
+This makes it clear that reward shaping drives behavior during episodes, while benchmark score reflects objective completion quality.
 
 ## Grader Definition (Deterministic)
 

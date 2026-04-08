@@ -33,6 +33,14 @@ from models import (
 )
 from scenarios import get_scenario
 
+VALID_MODES = {"benchmark", "training"}
+COMMAND_ALIASES = {
+    "inspect": "inspect_package",
+    "dependents": "check_dependents",
+    "deps": "check_dependents",
+    "rotate": "rotate_secret",
+}
+
 VALID_COMMANDS = {
     "inspect_package",
     "check_dependents",
@@ -47,22 +55,50 @@ VALID_COMMANDS = {
 class AgenticSecurityLabEnvironment:
     """Supply chain incident response RL environment."""
 
-    def __init__(self, task_name: str = "easy"):
+    def __init__(
+        self,
+        task_name: str = "easy",
+        mode: str = "benchmark",
+        command_fallback_enabled: bool = True,
+    ):
         self._task_name = task_name
         self._state     = AgenticSecurityLabState()
         self._scenario: dict[str, Any] = {}
+        self._requested_mode = mode
+        self._command_fallback_enabled = command_fallback_enabled
+        self._mode_fallback_used = False
 
-    def reset(self, task_name: str | None = None) -> AgenticSecurityLabObservation:
+    def _resolve_mode(self, mode: str) -> str:
+        if mode in VALID_MODES:
+            self._mode_fallback_used = False
+            return mode
+        self._mode_fallback_used = True
+        return "benchmark"
+
+    def reset(
+        self,
+        task_name: str | None = None,
+        mode: str | None = None,
+        command_fallback_enabled: bool | None = None,
+    ) -> AgenticSecurityLabObservation:
         if task_name:
             self._task_name = task_name
+        if mode is not None:
+            self._requested_mode = mode
+        if command_fallback_enabled is not None:
+            self._command_fallback_enabled = command_fallback_enabled
 
         sc = get_scenario(self._task_name)
         self._scenario = sc
+        resolved_mode = self._resolve_mode(self._requested_mode)
 
         self._state = AgenticSecurityLabState(
             episode_id        = str(uuid.uuid4()),
             step_count        = 0,
             task_name         = self._task_name,
+            mode              = resolved_mode,
+            mode_fallback_used = self._mode_fallback_used,
+            command_fallback_enabled = self._command_fallback_enabled,
             packages          = sc["packages"],
             dependents        = sc["dependents"],
             secrets           = sc["secrets"],
@@ -80,13 +116,22 @@ class AgenticSecurityLabEnvironment:
             result  = (
                 f"[INCIDENT ALERT]  Task: {self._task_name.upper()}\n"
                 f"{sc['description']}\n\n"
+                f"Execution mode   : {resolved_mode}"
+                + (" (fallback from unsupported mode)" if self._mode_fallback_used else "")
+                + "\n"
                 f"Packages in scope : {list(sc['packages'].keys())}\n"
                 f"Exfiltration in   : {sc['exfiltration_step']} steps "
                 f"(budget: {sc['max_steps']} steps total)\n\n"
                 f"Commands available: inspect_package, check_dependents, "
                 f"rotate_secret, quarantine, notify, scan_logs, conclude"
             ),
-            data                     = {"packages_in_scope": list(sc["packages"].keys())},
+            data                     = {
+                "packages_in_scope": list(sc["packages"].keys()),
+                "reward_type": "training_step_reward",
+                "benchmark_score": self._benchmark_score(),
+                "score_breakdown": self._benchmark_score_components(),
+                "evaluator_metrics": self._evaluator_metrics(),
+            },
             incident_summary         = f"Incident open. {len(malicious)} malicious package(s) suspected.",
             steps_remaining          = sc["exfiltration_step"],
             exposed_secrets          = exposed,
@@ -112,10 +157,14 @@ class AgenticSecurityLabEnvironment:
 
         cmd    = action.command.strip().lower()
         params = action.parameters
+        if self._state.command_fallback_enabled and cmd in COMMAND_ALIASES:
+            cmd = COMMAND_ALIASES[cmd]
+            self._state.command_fallback_used_count += 1
 
         if cmd not in VALID_COMMANDS:
             reward = -0.01
             s.total_reward += reward
+            s.invalid_action_count += 1
             return self._build_obs(
                 reward  = reward,
                 success = False,
@@ -200,6 +249,7 @@ class AgenticSecurityLabEnvironment:
         if s.secrets[secret]["rotated"]:
             reward = -0.02
             s.total_reward += reward
+            s.duplicate_action_count += 1
             return self._build_obs(reward, False,
                 f"Secret '{secret}' was already rotated.", steps_left)
 
@@ -208,6 +258,8 @@ class AgenticSecurityLabEnvironment:
         is_critical = s.secrets[secret]["critical"]
         reward = 0.12 if is_critical else 0.06
         s.total_reward += reward
+        if is_critical and s.step_count < s.exfiltration_step:
+            s.critical_rotated_before_deadline = True
 
         return self._build_obs(
             reward  = reward,
@@ -232,12 +284,14 @@ class AgenticSecurityLabEnvironment:
                 error="Package not found")
 
         if pkg in s.quarantined:
+            s.duplicate_action_count += 1
             return self._build_obs(-0.02, False,
                 f"'{pkg}' already quarantined.", steps_left)
 
         if not s.packages[pkg]["malicious"]:
             reward = -0.05
             s.total_reward += reward
+            s.false_positive_quarantines += 1
             return self._build_obs(reward, False,
                 f"⚠  False positive: '{pkg}' is NOT malicious. "
                 f"Unnecessary quarantine harms users.", steps_left)
@@ -270,6 +324,7 @@ class AgenticSecurityLabEnvironment:
                 error="Unknown team")
 
         if team in s.notified_teams:
+            s.duplicate_action_count += 1
             return self._build_obs(0.0, True,
                 f"Team '{team}' already notified.", steps_left)
 
@@ -364,7 +419,13 @@ class AgenticSecurityLabEnvironment:
             done     = done,
             reward   = reward,
             result   = result,
-            data     = data or {},
+            data     = {
+                **(data or {}),
+                "reward_type": "training_step_reward",
+                "benchmark_score": self._benchmark_score(),
+                "score_breakdown": self._benchmark_score_components(),
+                "evaluator_metrics": self._evaluator_metrics(),
+            },
             incident_summary = (
                 f"Step {s.step_count}/{s.max_steps}  |  "
                 f"Quarantined: {len(s.quarantined)}  |  "
@@ -386,6 +447,13 @@ class AgenticSecurityLabEnvironment:
             done     = True,
             reward   = reward,
             result   = result or "Episode ended.",
+            data     = {
+                "reward_type": "training_step_reward",
+                "benchmark_score": self._benchmark_score(),
+                "score_breakdown": self._benchmark_score_components(),
+                "evaluator_metrics": self._evaluator_metrics(),
+                "total_training_reward": s.total_reward,
+            },
             incident_summary = (
                 f"CLOSED  |  Steps: {s.step_count}  |  "
                 f"Total reward: {s.total_reward:.3f}"
@@ -394,3 +462,55 @@ class AgenticSecurityLabEnvironment:
             exposed_secrets           = [k for k, v in s.secrets.items() if not v["rotated"]],
             active_malicious_packages = [],
         )
+
+    def _benchmark_score_components(self) -> dict[str, float]:
+        s = self._state
+        req = self._scenario.get("required_actions", {})
+        q_required = req.get("quarantine", [])
+        r_required = req.get("rotate_secret", [])
+        n_required = req.get("notify", [])
+
+        def ratio(done: list[str], required: list[str]) -> float:
+            if not required:
+                return 1.0
+            return len(set(done) & set(required)) / float(len(required))
+
+        quarantine_ratio = ratio(s.quarantined, q_required)
+        rotate_ratio = ratio(s.rotated_secrets, r_required)
+        notify_ratio = ratio(s.notified_teams, n_required)
+        contain_ratio = 1.0 if not s.attacker_succeeded else 0.0
+        return {
+            "quarantine_ratio": quarantine_ratio,
+            "rotate_ratio": rotate_ratio,
+            "notify_ratio": notify_ratio,
+            "contain_ratio": contain_ratio,
+        }
+
+    def _benchmark_score(self) -> float:
+        c = self._benchmark_score_components()
+        score = (
+            0.35 * c["quarantine_ratio"]
+            + 0.35 * c["rotate_ratio"]
+            + 0.20 * c["notify_ratio"]
+            + 0.10 * c["contain_ratio"]
+        )
+        return max(0.0, min(1.0, round(score, 6)))
+
+    def _evaluator_metrics(self) -> dict[str, Any]:
+        s = self._state
+        return {
+            "task_name": s.task_name,
+            "mode": s.mode,
+            "mode_fallback_used": s.mode_fallback_used,
+            "command_fallback_enabled": s.command_fallback_enabled,
+            "command_fallback_used_count": s.command_fallback_used_count,
+            "invalid_action_count": s.invalid_action_count,
+            "duplicate_action_count": s.duplicate_action_count,
+            "false_positive_quarantines": s.false_positive_quarantines,
+            "critical_rotated_before_deadline": s.critical_rotated_before_deadline,
+            "attacker_succeeded": s.attacker_succeeded,
+            "steps_taken": s.step_count,
+            "steps_budget": s.max_steps,
+            "steps_to_exfiltration": max(0, s.exfiltration_step - s.step_count),
+            "total_training_reward": round(s.total_reward, 6),
+        }

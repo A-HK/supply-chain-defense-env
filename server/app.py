@@ -13,8 +13,14 @@ from models import (
 from server.agentic_security_lab_environment import AgenticSecurityLabEnvironment
 
 TASK_NAME = os.getenv("TASK_NAME", "easy")
+MODE = os.getenv("AGENTIC_SECURITY_LAB_MODE", "benchmark")
+COMMAND_FALLBACK = os.getenv("AGENTIC_SECURITY_LAB_COMMAND_FALLBACK", "true").lower() in {"1", "true", "yes"}
 
-env = AgenticSecurityLabEnvironment(task_name=TASK_NAME)
+env = AgenticSecurityLabEnvironment(
+    task_name=TASK_NAME,
+    mode=MODE,
+    command_fallback_enabled=COMMAND_FALLBACK,
+)
 
 app = FastAPI(
     title="Agentic Security Lab — Supply Chain Incident Response",
@@ -29,6 +35,8 @@ app = FastAPI(
 
 class ResetRequest(BaseModel):
     task_name: str | None = None
+    mode: str | None = None
+    command_fallback_enabled: bool | None = None
 
 
 class StepRequest(BaseModel):
@@ -38,7 +46,11 @@ class StepRequest(BaseModel):
 
 @app.post("/reset", response_model=AgenticSecurityLabObservation)
 def reset(req: ResetRequest = ResetRequest()):
-    return env.reset(task_name=req.task_name)
+    return env.reset(
+        task_name=req.task_name,
+        mode=req.mode,
+        command_fallback_enabled=req.command_fallback_enabled,
+    )
 
 
 @app.post("/step", response_model=AgenticSecurityLabObservation)
@@ -54,7 +66,12 @@ def state():
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "task": env.state.task_name}
+    return {
+        "status": "ok",
+        "task": env.state.task_name,
+        "mode": env.state.mode,
+        "mode_fallback_used": env.state.mode_fallback_used,
+    }
 
 
 @app.get("/")

@@ -57,6 +57,10 @@ class AgenticSecurityLabState(BaseModel):
     step_count: int = 0
 
     task_name: str = ""
+    mode: str = "benchmark"
+    mode_fallback_used: bool = False
+    command_fallback_enabled: bool = True
+    command_fallback_used_count: int = 0
 
     packages:   dict[str, Any]       = {}   # name@version -> metadata
     dependents: dict[str, list[str]] = {}   # package      -> consumers
@@ -75,3 +79,7 @@ class AgenticSecurityLabState(BaseModel):
     total_reward:       float = 0.0
     incident_contained: bool  = False
     attacker_succeeded: bool  = False
+    invalid_action_count: int = 0
+    duplicate_action_count: int = 0
+    false_positive_quarantines: int = 0
+    critical_rotated_before_deadline: bool = False
