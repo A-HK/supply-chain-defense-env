@@ -80,6 +80,8 @@ _REQUIRED: dict[str, dict[str, list[str]]] = {
     },
 }
 
+_EPS = 1e-6
+
 
 def _ratio(done: list[str], required: list[str]) -> float:
     if not required:
@@ -108,7 +110,8 @@ def _grade_task(state: AgenticSecurityLabState | dict[str, Any], task_name: str)
         + 0.20 * notify_score
         + 0.10 * contain_score
     )
-    return max(0.0, min(1.0, round(score, 6)))
+    bounded = max(_EPS, min(1.0 - _EPS, score))
+    return round(bounded, 6)
 
 
 def grade_easy(state: AgenticSecurityLabState | dict[str, Any]) -> float:
