@@ -1,255 +1,229 @@
 ---
 title: Agentic Security Lab Environment Server
-emoji: ⌚
-colorFrom: blue
-colorTo: yellow
+emoji: 🚨
+colorFrom: red
+colorTo: purple
 sdk: docker
 pinned: false
 app_port: 8000
 base_path: /web
 tags:
   - openenv
+  - security
+  - supply-chain
+  - incident-response
 ---
 
-# Agentic Security Lab Environment
+# Agentic Security Lab: Supply Chain Incident Response
 
-A simple test environment that echoes back messages. Perfect for testing the env APIs as well as demonstrating environment usage patterns.
+Train and evaluate agents on a high-stakes, real-world workflow: **responding to a confirmed software supply chain compromise before attacker exfiltration succeeds**.
+
+This environment is inspired by modern npm ecosystem incidents (compromised maintainer accounts, slopsquatted packages, CI token theft campaigns). The agent is not doing passive detection. It must **actively coordinate incident response** over multiple steps with changing state and deadline pressure.
+
+## Recent Threat Context
+
+This benchmark is grounded in the same incident patterns teams are dealing with now:
+
+- **Axios package compromise reports** highlighted how a single compromised maintainer flow can rapidly expose secrets across many downstream services.
+- **LiteLLM package compromise reports** reinforced that AI tooling dependencies can become a supply-chain entry point with broad blast radius in production systems.
+- **Multi-package npm campaigns** (e.g., credential theft clusters) showed attackers combining slopsquatting, token theft, and CI/CD exfiltration.
+
+Agentic Security Lab operationalizes these patterns into deterministic tasks where action ordering directly changes containment outcomes.
+
+## Why This Environment Matters
+
+Most current agent benchmarks reward short, stateless tasks. Real security operations are not like that.
+
+This environment models:
+- dependency-graph blast radius analysis,
+- package quarantine decisions under uncertainty,
+- secret rotation prioritization (critical vs non-critical),
+- downstream stakeholder notification at scale,
+- race-against-the-clock containment before exfiltration.
+
+The result is an RL-friendly setting with meaningful sequential decision-making and deterministic grading.
+
+## Scenario Design
+
+Three deterministic tasks with increasing difficulty:
+
+### Easy
+- Single compromised package: `axios@1.7.4`
+- 2 exposed secrets
+- 3 affected teams
+- Exfiltration deadline: 14 steps
+
+### Medium
+- Transitive compromise: `form-data@4.0.1` (via `node-fetch`)
+- 5 exposed secrets
+- 12 affected teams
+- Exfiltration deadline: 18 steps
+
+### Hard
+- Coordinated PhantomRaven-style campaign
+- 5 malicious packages (slopsquatting)
+- 8 secrets including CI/CD credentials
+- 20 affected teams
+- Exfiltration deadline: 10 steps
+
+## Action Space
+
+Actions are structured commands:
+
+- `inspect_package` with `{"package": "<name@version>"}`
+- `check_dependents` with `{"package": "<name@version>"}`
+- `rotate_secret` with `{"secret": "<SECRET_NAME>"}`
+- `quarantine` with `{"package": "<name@version>"}`
+- `notify` with `{"team": "<team-name>"}`
+- `scan_logs` with `{"package": "<name@version>"}`
+- `conclude` with `{}`
+
+## Observation Space
+
+Each step returns:
+
+- `success`: whether the action executed correctly
+- `done`: episode termination flag
+- `reward`: per-step shaped reward
+- `result`: human-readable action result
+- `data`: structured output for machine consumption
+- `incident_summary`: compact progress dashboard
+- `steps_remaining`: countdown to attacker success threshold
+- `exposed_secrets`: not-yet-rotated credentials
+- `active_malicious_packages`: malicious packages not yet quarantined
+- `error`: optional action error reason
+
+## Reward Design
+
+Dense reward shaping provides trajectory-level signal, not just terminal binary success.
+
+Per-step rewards:
+- quarantine correct malicious package: `+0.15`
+- rotate critical secret: `+0.12`
+- rotate non-critical secret: `+0.06`
+- notify affected team: `+0.04`
+- scan logs for intel: `+0.02`
+- inspect/check dependency metadata: `+0.01`
+
+Penalties:
+- quarantine clean package (false positive): `-0.05`
+- re-rotate already rotated secret: `-0.02`
+- invalid/unknown command: `-0.01`
+
+Episode-end bonuses (on `conclude`/terminal):
+- all required packages quarantined: `+0.10`
+- all required secrets rotated: `+0.10`
+- all required teams notified: `+0.05`
+- contained before exfiltration: `+0.10`
+- attacker succeeds: `-0.20`
 
 ## Quick Start
 
-The simplest way to use the Agentic Security Lab environment is through the `AgenticSecurityLabEnv` class:
-
-```python
-from agentic_security_lab import AgenticSecurityLabAction, AgenticSecurityLabEnv
-
-try:
-    # Create environment from Docker image
-    agentic_security_labenv = AgenticSecurityLabEnv.from_docker_image("agentic_security_lab-env:latest")
-
-    # Reset
-    result = agentic_security_labenv.reset()
-    print(f"Reset: {result.observation.echoed_message}")
-
-    # Send multiple messages
-    messages = ["Hello, World!", "Testing echo", "Final message"]
-
-    for msg in messages:
-        result = agentic_security_labenv.step(AgenticSecurityLabAction(message=msg))
-        print(f"Sent: '{msg}'")
-        print(f"  → Echoed: '{result.observation.echoed_message}'")
-        print(f"  → Length: {result.observation.message_length}")
-        print(f"  → Reward: {result.reward}")
-
-finally:
-    # Always clean up
-    agentic_security_labenv.close()
-```
-
-That's it! The `AgenticSecurityLabEnv.from_docker_image()` method handles:
-- Starting the Docker container
-- Waiting for the server to be ready
-- Connecting to the environment
-- Container cleanup when you call `close()`
-
-## Building the Docker Image
-
-Before using the environment, you need to build the Docker image:
+### 1) Install dependencies
 
 ```bash
-# From project root
-docker build -t agentic_security_lab-env:latest -f server/Dockerfile .
+pip install -U openenv-core
 ```
 
-## Deploying to Hugging Face Spaces
-
-You can easily deploy your OpenEnv environment to Hugging Face Spaces using the `openenv push` command:
+### 2) Run locally
 
 ```bash
-# From the environment directory (where openenv.yaml is located)
-openenv push
-
-# Or specify options
-openenv push --namespace my-org --private
+uvicorn server.app:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-The `openenv push` command will:
-1. Validate that the directory is an OpenEnv environment (checks for `openenv.yaml`)
-2. Prepare a custom build for Hugging Face Docker space (enables web interface)
-3. Upload to Hugging Face (ensuring you're logged in)
-
-### Prerequisites
-
-- Authenticate with Hugging Face: The command will prompt for login if not already authenticated
-
-### Options
-
-- `--directory`, `-d`: Directory containing the OpenEnv environment (defaults to current directory)
-- `--repo-id`, `-r`: Repository ID in format 'username/repo-name' (defaults to 'username/env-name' from openenv.yaml)
-- `--base-image`, `-b`: Base Docker image to use (overrides Dockerfile FROM)
-- `--private`: Deploy the space as private (default: public)
-
-### Examples
+### 3) Interact with API
 
 ```bash
-# Push to your personal namespace (defaults to username/env-name from openenv.yaml)
-openenv push
+# Reset to hard task
+curl -X POST http://localhost:8000/reset \
+  -H "Content-Type: application/json" \
+  -d '{"task_name":"hard"}'
 
-# Push to a specific repository
-openenv push --repo-id my-org/my-env
-
-# Push with a custom base image
-openenv push --base-image ghcr.io/meta-pytorch/openenv-base:latest
-
-# Push as a private space
-openenv push --private
-
-# Combine options
-openenv push --repo-id my-org/my-env --base-image custom-base:latest --private
+# Step: inspect a suspicious package
+curl -X POST http://localhost:8000/step \
+  -H "Content-Type: application/json" \
+  -d '{"command":"inspect_package","parameters":{"package":"1odash@4.17.21"}}'
 ```
 
-After deployment, your space will be available at:
-`https://huggingface.co/spaces/<repo-id>`
+## Baseline Inference
 
-The deployed space includes:
-- **Web Interface** at `/web` - Interactive UI for exploring the environment
-- **API Documentation** at `/docs` - Full OpenAPI/Swagger interface
-- **Health Check** at `/health` - Container health monitoring
-- **WebSocket** at `/ws` - Persistent session endpoint for low-latency interactions
+`inference.py` runs a model through tasks and prints structured logs in hackathon format:
 
-## Environment Details
+- `[START]`
+- `[STEP]`
+- `[END]`
 
-### Action
-**AgenticSecurityLabAction**: Contains a single field
-- `message` (str) - The message to echo back
+Required environment variables:
+- `HF_TOKEN` (or compatible API key)
+- `API_BASE_URL` (optional override, defaults set in script)
+- `MODEL_NAME` (optional override)
+- `ENV_BASE_URL` (defaults to `http://localhost:8000`)
+- `TASK_NAME` (optional: `easy|medium|hard`; otherwise runs all tasks)
 
-### Observation
-**AgenticSecurityLabObservation**: Contains the echo response and metadata
-- `echoed_message` (str) - The message echoed back
-- `message_length` (int) - Length of the message
-- `reward` (float) - Reward based on message length (length × 0.1)
-- `done` (bool) - Always False for echo environment
-- `metadata` (dict) - Additional info like step count
-
-### Reward
-The reward is calculated as: `message_length × 0.1`
-- "Hi" → reward: 0.2
-- "Hello, World!" → reward: 1.3
-- Empty message → reward: 0.0
-
-## Advanced Usage
-
-### Connecting to an Existing Server
-
-If you already have a Agentic Security Lab environment server running, you can connect directly:
-
-```python
-from agentic_security_lab import AgenticSecurityLabEnv
-
-# Connect to existing server
-agentic_security_labenv = AgenticSecurityLabEnv(base_url="<ENV_HTTP_URL_HERE>")
-
-# Use as normal
-result = agentic_security_labenv.reset()
-result = agentic_security_labenv.step(AgenticSecurityLabAction(message="Hello!"))
-```
-
-Note: When connecting to an existing server, `agentic_security_labenv.close()` will NOT stop the server.
-
-### Using the Context Manager
-
-The client supports context manager usage for automatic connection management:
-
-```python
-from agentic_security_lab import AgenticSecurityLabAction, AgenticSecurityLabEnv
-
-# Connect with context manager (auto-connects and closes)
-with AgenticSecurityLabEnv(base_url="http://localhost:8000") as env:
-    result = env.reset()
-    print(f"Reset: {result.observation.echoed_message}")
-    # Multiple steps with low latency
-    for msg in ["Hello", "World", "!"]:
-        result = env.step(AgenticSecurityLabAction(message=msg))
-        print(f"Echoed: {result.observation.echoed_message}")
-```
-
-The client uses WebSocket connections for:
-- **Lower latency**: No HTTP connection overhead per request
-- **Persistent session**: Server maintains your environment state
-- **Efficient for episodes**: Better for many sequential steps
-
-### Concurrent WebSocket Sessions
-
-The server supports multiple concurrent WebSocket connections. To enable this,
-modify `server/app.py` to use factory mode:
-
-```python
-# In server/app.py - use factory mode for concurrent sessions
-app = create_app(
-    AgenticSecurityLabEnvironment,  # Pass class, not instance
-    AgenticSecurityLabAction,
-    AgenticSecurityLabObservation,
-    max_concurrent_envs=4,  # Allow 4 concurrent sessions
-)
-```
-
-Then multiple clients can connect simultaneously:
-
-```python
-from agentic_security_lab import AgenticSecurityLabAction, AgenticSecurityLabEnv
-from concurrent.futures import ThreadPoolExecutor
-
-def run_episode(client_id: int):
-    with AgenticSecurityLabEnv(base_url="http://localhost:8000") as env:
-        result = env.reset()
-        for i in range(10):
-            result = env.step(AgenticSecurityLabAction(message=f"Client {client_id}, step {i}"))
-        return client_id, result.observation.message_length
-
-# Run 4 episodes concurrently
-with ThreadPoolExecutor(max_workers=4) as executor:
-    results = list(executor.map(run_episode, range(4)))
-```
-
-## Development & Testing
-
-### Direct Environment Testing
-
-Test the environment logic directly without starting the HTTP server:
+Run:
 
 ```bash
-# From the server directory
-python3 server/agentic_security_lab_environment.py
+python inference.py
 ```
 
-This verifies that:
-- Environment resets correctly
-- Step executes actions properly
-- State tracking works
-- Rewards are calculated correctly
+## OpenEnv + Submission Compliance
 
-### Running Locally
+This project includes:
+- typed action/observation/state models (`models.py`),
+- `step` / `reset` / `state` endpoints (`server/app.py`),
+- environment metadata (`openenv.yaml`),
+- containerized runtime (`Dockerfile`),
+- baseline script (`inference.py`).
 
-Run the server locally for development:
+Pre-submit checks:
 
 ```bash
-uvicorn server.app:app --reload
+# from repo root
+docker build -t agentic-security-lab .
+openenv validate
 ```
+
+If using the provided validator script:
+
+```bash
+./validate-submission.sh https://your-space.hf.space .
+```
+
+## Deploy to Hugging Face Spaces
+
+From the environment directory:
+
+```bash
+openenv push --repo-id <username>/agentic-security-lab
+```
+
+After deployment, verify:
+- `POST /reset` returns `200`
+- task switching works (`easy`, `medium`, `hard`)
+- inference runs end-to-end within runtime budget
 
 ## Project Structure
 
-```
+```text
 agentic_security_lab/
-├── .dockerignore         # Docker build exclusions
-├── __init__.py            # Module exports
-├── README.md              # This file
-├── openenv.yaml           # OpenEnv manifest
-├── pyproject.toml         # Project metadata and dependencies
-├── uv.lock                # Locked dependencies (generated)
-├── client.py              # AgenticSecurityLabEnv client
-├── models.py              # Action and Observation models
+├── README.md
+├── openenv.yaml
+├── inference.py
+├── models.py
+├── scenarios.py
+├── client.py
+├── pyproject.toml
+├── Dockerfile
 └── server/
-    ├── __init__.py        # Server module exports
-    ├── agentic_security_lab_environment.py  # Core environment logic
-    ├── app.py             # FastAPI application (HTTP + WebSocket endpoints)
-    └── Dockerfile         # Container image definition
+    ├── app.py
+    └── agentic_security_lab_environment.py
 ```
+
+## What Makes It Novel
+
+- Security operations instead of toy game dynamics.
+- Realistic dependency-graph containment workflow.
+- Mixed objectives (containment, credential safety, communications) with competing priorities.
+- Deterministic scoring with partial credit over full trajectories.
+
+This makes Agentic Security Lab useful for evaluating planning quality, action ordering, and risk-aware behavior in agentic systems.
