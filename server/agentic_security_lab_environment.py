@@ -13,6 +13,37 @@ from models import (
 )
 from scenarios import generate_scenario, get_scenario
 
+# Attempt to use the procedural generator for richer training-mode variation.
+try:
+    from training.procedural_scenarios import generate_procedural_scenario as _gen_proc
+    _HAS_PROCEDURAL = True
+except ImportError:
+    _HAS_PROCEDURAL = False
+
+# Inherit from OpenEnv's base Environment class if available; fall back to
+# plain object so the file works in environments where openenv-core is absent.
+try:
+    from openenv.core import Environment as _OpenEnvBase  # type: ignore[import]
+except ImportError:
+    _OpenEnvBase = object  # type: ignore[misc,assignment]
+
+
+def _score_from_breakdown(breakdown: dict[str, float]) -> float:
+    """Shared formula used by both in-episode scoring and graders."""
+    return round(
+        max(
+            0.0,
+            min(
+                1.0,
+                0.35 * breakdown["quarantine_ratio"]
+                + 0.35 * breakdown["rotate_ratio"]
+                + 0.20 * breakdown["notify_ratio"]
+                + 0.10 * breakdown["contain_ratio"],
+            ),
+        ),
+        6,
+    )
+
 VALID_COMMANDS = {
     "inspect_package",
     "check_dependents",
@@ -33,8 +64,13 @@ COMMAND_ALIASES = {
 VALID_MODES = {"benchmark", "training"}
 
 
-class AgenticSecurityLabEnvironment:
-    """Supply-chain incident response environment."""
+class AgenticSecurityLabEnvironment(_OpenEnvBase):
+    """Supply-chain incident response environment.
+
+    Inherits from ``openenv.core.Environment`` when openenv-core is installed,
+    giving the framework standard lifecycle hooks.  Falls back to plain
+    ``object`` so the class works in lightweight / testing contexts too.
+    """
 
     def __init__(self, task_name: str = "easy") -> None:
         self._task_name = task_name
@@ -62,7 +98,12 @@ class AgenticSecurityLabEnvironment:
             scenario = get_scenario(self._task_name)
             self._rng = random.Random(self._task_name)
         else:
-            scenario = generate_scenario(self._task_name, difficulty_scale=1.0)
+            # Prefer fully procedural generation (infinite unique incidents) when
+            # available; fall back to jitter-only variation for minimal installs.
+            if _HAS_PROCEDURAL:
+                scenario = _gen_proc(difficulty=self._task_name)
+            else:
+                scenario = generate_scenario(self._task_name, difficulty_scale=1.0)
             self._rng = random.Random()
         self._scenario = scenario
 
@@ -431,14 +472,7 @@ class AgenticSecurityLabEnvironment:
         }
 
     def _benchmark_score(self) -> float:
-        breakdown = self._score_breakdown()
-        score = (
-            0.35 * breakdown["quarantine_ratio"]
-            + 0.35 * breakdown["rotate_ratio"]
-            + 0.20 * breakdown["notify_ratio"]
-            + 0.10 * breakdown["contain_ratio"]
-        )
-        return round(max(0.0, min(1.0, score)), 6)
+        return _score_from_breakdown(self._score_breakdown())
 
     @staticmethod
     def _ratio(actual: list[str], required: list[str]) -> float:

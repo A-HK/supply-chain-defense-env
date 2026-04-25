@@ -7,6 +7,21 @@ try:
 except ImportError:
     from models import AgenticSecurityLabState
 
+try:
+    from server.agentic_security_lab_environment import _score_from_breakdown
+except ImportError:
+    # Fallback in case server package is not on the path.
+    def _score_from_breakdown(breakdown: dict) -> float:  # type: ignore[misc]
+        from math import inf  # noqa: F401
+        return round(
+            max(0.0, min(1.0,
+                0.35 * breakdown["quarantine_ratio"]
+                + 0.35 * breakdown["rotate_ratio"]
+                + 0.20 * breakdown["notify_ratio"]
+                + 0.10 * breakdown["contain_ratio"],
+            )), 6,
+        )
+
 _REQUIRED: dict[str, dict[str, list[str]]] = {
     "easy": {
         "quarantine": ["axios@1.7.4"],
@@ -99,19 +114,14 @@ def _grade_task(state: AgenticSecurityLabState | dict[str, Any], task_name: str)
     s = _normalize_state(state)
     req = _REQUIRED[task_name]
 
-    quarantine_score = _ratio(s.quarantined, req["quarantine"])
-    rotate_score = _ratio(s.rotated_secrets, req["rotate_secret"])
-    notify_score = _ratio(s.notified_teams, req["notify"])
-    contain_score = 1.0 if not s.attacker_succeeded else 0.0
-
-    score = (
-        0.35 * quarantine_score
-        + 0.35 * rotate_score
-        + 0.20 * notify_score
-        + 0.10 * contain_score
-    )
-    bounded = max(_EPS, min(1.0 - _EPS, score))
-    return round(bounded, 6)
+    breakdown = {
+        "quarantine_ratio": _ratio(s.quarantined, req["quarantine"]),
+        "rotate_ratio": _ratio(s.rotated_secrets, req["rotate_secret"]),
+        "notify_ratio": _ratio(s.notified_teams, req["notify"]),
+        "contain_ratio": 1.0 if not s.attacker_succeeded else 0.0,
+    }
+    score = _score_from_breakdown(breakdown)
+    return round(max(_EPS, min(1.0 - _EPS, score)), 6)
 
 
 def grade_easy(state: AgenticSecurityLabState | dict[str, Any]) -> float:

@@ -12,7 +12,10 @@ from openenv.core import EnvClient
 from openenv.core.client_types import StepResult
 from openenv.core.env_server.types import State
 
-from .models import AgenticSecurityLabAction, AgenticSecurityLabObservation
+try:
+    from .models import AgenticSecurityLabAction, AgenticSecurityLabObservation
+except ImportError:
+    from models import AgenticSecurityLabAction, AgenticSecurityLabObservation  # type: ignore[no-redef]
 
 
 class AgenticSecurityLabEnv(

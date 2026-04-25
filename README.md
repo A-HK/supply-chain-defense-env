@@ -55,6 +55,16 @@ score = 0.35 × quarantine_ratio + 0.35 × rotate_ratio + 0.20 × notify_ratio +
 
 ---
 
+## Why this matters — and who would care
+
+**Security engineers** spend the first 15 minutes of a supply-chain incident doing exactly what this environment trains: triaging packages, tracing blast radius, rotating credentials, and notifying downstream teams — all under attacker time pressure. Today's LLMs handle each step poorly when forced to do them in sequence under uncertainty. A model trained in this environment would meaningfully accelerate real incident response.
+
+**LLM researchers** get a richly observable multi-step reasoning benchmark where every decision has verifiable consequences (did the attacker succeed or not?). Unlike math or coding benchmarks, the task is open-ended enough to study planning, prioritisation under uncertainty, and adaptive strategy — but verifiable enough to measure.
+
+**The OpenEnv / RL training community** gets a realistic tool-calling environment in an underexplored domain (security ops), with procedural generation that prevents dataset saturation, an adaptive adversary for self-play, and process-level rewards that go beyond simple outcome scoring.
+
+---
+
 ## Why RL, not just prompting
 
 Three reasons this environment genuinely needs RL:
@@ -199,8 +209,9 @@ The attacker advances each step. In benchmark mode, progress is deterministic (1
 │   ├── security_apis.py                      # OSV, deps.dev, GHSA, npm integrations
 │   ├── trajectory_filter.py                  # StarPO-S filtering + collapse detection
 │   ├── adversarial_attacker.py               # Adaptive self-play attacker
-│   ├── train_grpo.py                         # Expert trajectory collection + SFT
-│   ├── self_improve.py                       # Multi-round collect-train loop
+│   ├── train_grpo.py                         # Phase-0: expert trajectory collection + SFT warmup
+│   ├── train_ppo.py                          # Legacy alias → delegates to train_grpo.py
+│   ├── self_improve.py                       # Multi-round SFT self-improvement loop
 │   ├── curriculum.py                         # AdaptiveCurriculum scheduler
 │   ├── callbacks.py                          # JSONL metrics logger
 │   ├── evaluate.py                           # Episode summary stats
@@ -260,8 +271,10 @@ Open [notebooks/round2_training_colab.ipynb](notebooks/round2_training_colab.ipy
 5. Runs baseline evaluation (untrained model)
 6. Trains with GRPO + environment_factory
 7. Runs post-training evaluation
-8. Generates reward curve, loss curve, before/after comparison, and component score plots
+8. Generates reward curve, loss curve, before/after comparison, and component score plots (saved to `artifacts/`)
 9. Pushes the trained model to HuggingFace Hub
+
+> **QLoRA save warning.** Do **not** upcast the 4-bit model to 16-bit and then naively merge LoRA weights — this can severely damage model quality. The notebook uses Unsloth's `push_to_hub_merged` with `save_method='lora'` to upload adapter weights only, or `save_method='merged_16bit'` for a full merged push. Always test post-training inference immediately after saving before ending the session.
 
 ---
 
