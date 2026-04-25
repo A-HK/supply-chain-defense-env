@@ -279,7 +279,6 @@ Open [notebooks/round2_training_colab.ipynb](notebooks/round2_training_colab.ipy
 *Before/after comparison across difficulty levels.*
 
 ---
-
 ## References
 
 | Paper | What we use from it |
