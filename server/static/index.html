@@ -1,0 +1,825 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Agentic Security Lab</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+/* ══════════════════════════════════════════════
+   DESIGN TOKENS  — warm orange / shadcn style
+   ══════════════════════════════════════════════ */
+:root {
+  --bg:    #faf6f0;
+  --card:  #ffffff;
+  --bd:    #e8e1d9;
+  --bd2:   #d6cfc6;
+  --muted: #f5f0e8;
+
+  --p:     #c2600a;
+  --p-dk:  #9a4c08;
+  --p-lt:  #fef3e8;
+  --p-fg:  #ffffff;
+
+  --red:   #1c1917;  --red-lt: #f5f5f4;  --red-bd: #d4d4d4;
+  --grn:   #16a34a;  --grn-lt: #f0fdf4;  --grn-bd: #bbf7d0;
+  --amb:   #d97706;  --amb-lt: #fffbeb;  --amb-bd: #fde68a;
+  --blue:  #2563eb;
+
+  --fg:    #1c1917;
+  --fg2:   #57534e;
+  --fg3:   #a8a29e;
+
+  --font:  -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif;
+  --mono:  'JetBrains Mono','Fira Code','Cascadia Code','Courier New',monospace;
+
+  --r:     8px;
+  --r-sm:  5px;
+  --r-lg:  12px;
+  --sh:    0 1px 2px rgba(0,0,0,.05), 0 0 0 1px rgba(0,0,0,.03);
+}
+
+*,*::before,*::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { background: var(--bg); color: var(--fg); font-family: var(--font); font-size: 13px; }
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--bd2); border-radius: 99px; }
+button { font-family: inherit; cursor: pointer; }
+select { font-family: inherit; }
+.hidden { display: none !important; }
+
+/* ══════ PAGE WRAPPER ══════ */
+#app { max-width: 1280px; margin: 0 auto; padding: 16px 20px 32px; display: flex; flex-direction: column; gap: 12px; }
+
+/* ══════ HEADER ══════ */
+.hdr { display: flex; align-items: center; gap: 12px; padding-bottom: 14px; border-bottom: 1px solid var(--bd); flex-wrap: wrap; }
+.hdr-logo { display: flex; align-items: center; gap: 9px; }
+.logo-ico { width: 34px; height: 34px; background: var(--p); border-radius: var(--r-sm); display: flex; align-items: center; justify-content: center; font-size: 17px; flex-shrink: 0; }
+.logo-text { font-size: 15px; font-weight: 700; color: var(--fg); }
+.logo-sub { font-size: 10.5px; color: var(--fg3); margin-top: 1px; }
+.hdr-sep { width: 1px; height: 28px; background: var(--bd); flex-shrink: 0; }
+
+/* Scenario tabs */
+.sc-tabs { display: flex; gap: 4px; }
+.sc-tab { padding: 6px 14px; border-radius: var(--r-sm); font-size: 12.5px; font-weight: 500;
+          border: 1px solid var(--bd); background: var(--card); color: var(--fg2); cursor: pointer; transition: .13s; }
+.sc-tab:hover:not(.on) { background: var(--muted); border-color: var(--bd2); color: var(--fg); }
+.sc-tab.on { background: var(--p); border-color: var(--p); color: var(--p-fg); font-weight: 600; }
+
+/* Status badge */
+.ep-badge { display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px;
+            border-radius: 99px; font-size: 11px; font-weight: 600; border: 1px solid; margin-left: auto; }
+.ep-ready  { background: var(--grn-lt); color: var(--grn); border-color: var(--grn-bd); }
+.ep-active { background: var(--amb-lt); color: var(--amb); border-color: var(--amb-bd); }
+.ep-done   { background: var(--p-lt);   color: var(--p-dk); border-color: #fcd9b4; }
+.ep-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.ep-active .ep-dot { animation: blink 1.2s infinite; }
+
+/* Scenario meta chips */
+.sc-meta { display: flex; gap: 8px; }
+.sc-chip { display: flex; flex-direction: column; align-items: center; padding: 4px 10px;
+           background: var(--muted); border-radius: var(--r-sm); border: 1px solid var(--bd); }
+.sc-chip-v { font-size: 15px; font-weight: 700; color: var(--p); font-family: var(--mono); line-height: 1; }
+.sc-chip-l { font-size: 9px; color: var(--fg3); text-transform: uppercase; letter-spacing: .05em; margin-top: 1px; }
+
+/* ══════ INCIDENT BANNER ══════ */
+.banner { display: flex; align-items: flex-start; gap: 11px; padding: 11px 14px;
+          background: var(--amb-lt); border: 1px solid var(--amb-bd); border-radius: var(--r); border-left: 4px solid var(--amb); }
+.banner.hidden { display: none; }
+.ban-ico { font-size: 17px; margin-top: 1px; flex-shrink: 0; }
+.ban-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--p-dk); margin-bottom: 3px; }
+.ban-desc  { font-size: 11.5px; color: #78350f; line-height: 1.55; }
+.ban-meta  { display: flex; gap: 14px; margin-top: 6px; }
+.ban-kv .ban-k { font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--p); }
+.ban-kv .ban-v { font-size: 12px; font-weight: 700; font-family: var(--mono); color: #7c2d12; }
+
+/* ══════ CONTROLS ══════ */
+.ctrl-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.btn { display: inline-flex; align-items: center; gap: 5px; padding: 7px 14px; border-radius: var(--r-sm);
+       font-size: 12.5px; font-weight: 600; border: 1px solid transparent; transition: .13s; white-space: nowrap; }
+.btn:disabled { opacity: .38; cursor: not-allowed; }
+.btn-p  { background: var(--p);   color: var(--p-fg); border-color: var(--p); }
+.btn-p:hover:not(:disabled)  { background: var(--p-dk); border-color: var(--p-dk); }
+.btn-o  { background: var(--card); color: var(--p-dk); border-color: var(--p); }
+.btn-o:hover:not(:disabled)  { background: var(--p-lt); }
+.btn-s  { background: var(--card); color: var(--fg);   border-color: var(--bd); }
+.btn-s:hover:not(:disabled)  { background: var(--muted); border-color: var(--bd2); }
+.btn-d  { background: var(--card); color: var(--fg2); border-color: var(--bd); }
+.btn-d:hover:not(:disabled)  { background: var(--muted); border-color: var(--bd2); }
+.rwd-pill { display: flex; align-items: baseline; gap: 4px; margin-left: auto;
+            padding: 4px 12px; background: var(--muted); border: 1px solid var(--bd); border-radius: 99px; }
+.rwd-v { font-size: 15px; font-weight: 700; font-family: var(--mono); color: var(--p); }
+.rwd-l { font-size: 10px; color: var(--fg3); }
+
+/* ══════ MAIN GRID ══════ */
+.grid { display: grid; grid-template-columns: 248px 1fr 216px; gap: 12px; align-items: start; }
+
+/* ══════ CARD ══════ */
+.card { background: var(--card); border: 1px solid var(--bd); border-radius: var(--r); box-shadow: var(--sh); overflow: hidden; }
+.card + .card { margin-top: 10px; }
+.ch { display: flex; align-items: center; justify-content: space-between; padding: 10px 13px 9px; border-bottom: 1px solid var(--bd); }
+.ct { font-size: 12px; font-weight: 600; color: var(--fg); }
+.cs { font-size: 10.5px; color: var(--fg3); }
+.cb { padding: 11px 13px; }
+
+/* ══════ LEFT COLUMN ══════ */
+.left-col { display: flex; flex-direction: column; gap: 10px; }
+
+.graph-bg { background: var(--muted); border-radius: var(--r-sm); overflow: hidden; margin: 4px 6px 6px; }
+#pkg-graph { width: 100%; display: block; }
+
+.pkg-list, .sec-list { display: flex; flex-direction: column; gap: 2px; max-height: 148px; overflow-y: auto; }
+.pkg-row { display: flex; align-items: center; gap: 7px; padding: 5px 7px; border-radius: var(--r-sm); cursor: pointer; transition: .1s; }
+.pkg-row:hover { background: var(--muted); }
+.pip { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.pi-unk   { background: var(--fg3); }
+.pi-mal   { background: var(--red); box-shadow: 0 0 0 2px var(--red-lt); animation: blink 1.4s infinite; }
+.pi-clean { background: var(--grn); box-shadow: 0 0 0 2px var(--grn-lt); }
+.pi-qua   { background: var(--fg3); opacity: .45; }
+.pname { font-size: 11px; font-family: var(--mono); flex: 1; color: var(--fg); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pname.mal  { color: var(--red); } .pname.clean { color: var(--grn); } .pname.qua { color: var(--fg3); text-decoration: line-through; }
+.pchip { font-size: 9.5px; font-weight: 600; padding: 1px 6px; border-radius: 99px; flex-shrink: 0; }
+.c-mal  { background: var(--red-lt); color: var(--red); }
+.c-clean{ background: var(--grn-lt); color: var(--grn); }
+.c-qua  { background: var(--muted); color: var(--fg3); }
+.c-unk  { background: var(--muted); color: var(--fg3); }
+
+.sec-row { display: flex; align-items: center; gap: 7px; padding: 4px 7px; border-radius: var(--r-sm); }
+.sbadge { font-size: 9.5px; font-weight: 700; padding: 1px 6px; border-radius: 99px; flex-shrink: 0; text-transform: uppercase; letter-spacing: .04em; }
+.sb-exp { background: var(--red-lt); color: var(--red); }
+.sb-rot { background: var(--grn-lt); color: var(--grn); }
+.sname  { font-size: 10.5px; font-family: var(--mono); flex: 1; color: var(--fg2); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.scrit  { font-size: 9px; font-weight: 700; color: var(--red); flex-shrink: 0; }
+
+/* ══════ CENTER COLUMN ══════ */
+.mid-col { display: flex; flex-direction: column; gap: 10px; }
+
+.log-bar { display: flex; align-items: center; gap: 5px; padding: 8px 11px; background: #0d1117; border-bottom: 1px solid #21262d; }
+.ld { width: 10px; height: 10px; border-radius: 50%; }
+.ld1 { background: #ff5f56; } .ld2 { background: #ffbd2e; } .ld3 { background: #27c93f; }
+.llbl { font: 10.5px var(--mono); color: #484f58; margin-left: 7px; }
+.lspin { margin-left: auto; }
+#tlog { background: #0d1117; padding: 10px 12px; min-height: 220px; max-height: 248px; overflow-y: auto;
+        font: 11.5px/1.7 var(--mono); }
+.ll { display: block; animation: fadein .16s ease; }
+.ll.sys  { color: #4d87c4; } .ll.cmd { color: #7dd3fc; } .ll.cmd::before { content: '$ '; color: #4d87c4; }
+.ll.res  { color: #86efac; padding-left: 12px; } .ll.ok  { color: #4ade80; padding-left: 12px; }
+.ll.err  { color: #94a3b8; padding-left: 12px; } .ll.rwp { color: #fcd34d; padding-left: 12px; }
+.ll.rwn  { color: #94a3b8; padding-left: 12px; } .ll.alr { color: #fb923c; } .ll.alr::before { content: '! '; }
+.ll.sep  { color: #21262d; border-bottom: 1px solid #21262d; display: block; }
+
+.act-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 5px; }
+.abtn { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 8px 4px;
+        background: var(--card); border: 1px solid var(--bd); border-radius: var(--r-sm); cursor: pointer; transition: .13s; }
+.abtn:hover:not(:disabled) { border-color: var(--p); background: var(--p-lt); }
+.abtn:disabled { opacity: .35; cursor: not-allowed; }
+.abtn .an { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--fg2); text-align: center; line-height: 1.2; }
+.abtn .ar { font-size: 9px; font-family: var(--mono); color: var(--grn); font-weight: 600; }
+.abtn .ar.neg { color: var(--red); }
+
+.prow { display: flex; gap: 7px; align-items: center; margin-top: 8px; flex-wrap: wrap; }
+.prow.hidden { display: none; }
+.psel { flex: 1; min-width: 140px; padding: 6px 9px; border: 1px solid var(--bd); border-radius: var(--r-sm);
+        background: var(--card); color: var(--fg); font-size: 12px; font-family: var(--mono); }
+.psel:focus { outline: none; border-color: var(--p); box-shadow: 0 0 0 3px rgba(194,96,10,.12); }
+
+/* ══════ RIGHT COLUMN ══════ */
+.right-col { display: flex; flex-direction: column; gap: 10px; }
+
+.ring-wrap { display: flex; flex-direction: column; align-items: center; padding: 14px 8px 10px; }
+.ring-pct { font-size: 22px; font-weight: 800; font-family: var(--mono); color: var(--fg); line-height: 1; text-align: center; margin-top: -66px; position: relative; z-index: 1; }
+.ring-sub { font-size: 9.5px; color: var(--fg3); text-transform: uppercase; letter-spacing: .06em; text-align: center; }
+.ring-spacer { height: 18px; }
+.ring-row { display: flex; gap: 12px; margin-top: 4px; }
+.ring-kv { text-align: center; }
+.ring-v { font-size: 13px; font-weight: 700; font-family: var(--mono); color: var(--fg); }
+.ring-k { font-size: 9px; color: var(--fg3); text-transform: uppercase; letter-spacing: .05em; }
+
+.si-list { display: flex; flex-direction: column; gap: 8px; }
+.si { display: flex; flex-direction: column; gap: 3px; }
+.si-row { display: flex; align-items: center; justify-content: space-between; }
+.si-lbl { font-size: 11.5px; color: var(--fg2); }
+.si-right { display: flex; align-items: center; gap: 4px; }
+.si-wt  { font-size: 9.5px; color: var(--fg3); }
+.si-pct { font-size: 11.5px; font-weight: 700; font-family: var(--mono); }
+.si-bar { height: 5px; background: var(--muted); border-radius: 99px; overflow: hidden; border: 1px solid var(--bd); }
+.si-fill { height: 100%; border-radius: 99px; transition: width .5s ease; }
+.sq .si-fill { background: var(--red); }    .sq .si-pct { color: var(--red); }
+.sr .si-fill { background: var(--amb); }    .sr .si-pct { color: var(--amb); }
+.sn .si-fill { background: var(--blue); }   .sn .si-pct { color: var(--blue); }
+.sc2 .si-fill { background: var(--grn); }   .sc2 .si-pct { color: var(--grn); }
+.tot-row { display: flex; align-items: center; justify-content: space-between;
+           padding: 8px 13px; background: var(--muted); border-top: 1px solid var(--bd); }
+.tot-l { font-size: 11px; font-weight: 600; color: var(--fg2); }
+.tot-v { font-size: 18px; font-weight: 800; font-family: var(--mono); color: var(--p-dk); }
+
+.chart-cb { padding: 8px 12px 10px; }
+.chart-l { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--fg3); margin-bottom: 5px; }
+#rchart  { max-height: 80px; }
+
+.phase-list { display: flex; flex-direction: column; gap: 1px; }
+.ph { display: flex; align-items: center; gap: 8px; padding: 6px 7px; border-radius: var(--r-sm); transition: .12s; }
+.ph:hover { background: var(--muted); }
+.ph-ring { width: 20px; height: 20px; border-radius: 50%; border: 2px solid var(--bd2); flex-shrink: 0;
+           display: flex; align-items: center; justify-content: center; font-size: 9.5px; font-weight: 700;
+           color: var(--fg3); background: var(--card); transition: .2s; }
+.ph-ring.done { border-color: var(--grn); background: var(--grn-lt); color: var(--grn); }
+.ph-lbl { font-size: 11.5px; color: var(--fg2); flex: 1; }
+.ph-lbl.done { color: var(--fg); font-weight: 500; }
+
+/* ══════ TRAINING RESULTS ══════ */
+.res-section { border-top: 1px solid var(--bd); padding-top: 14px; }
+.res-head { margin-bottom: 11px; }
+.res-title { font-size: 14px; font-weight: 600; }
+.res-sub   { font-size: 11px; color: var(--fg3); margin-top: 2px; }
+.res-grid  { display: grid; grid-template-columns: 1fr 1fr; gap: 11px; }
+.ba-row { display: grid; grid-template-columns: 68px 1fr 1fr; gap: 8px; align-items: center; margin-bottom: 7px; }
+.ba-lbl { font-size: 11.5px; font-weight: 500; color: var(--fg2); }
+.ba-bg  { height: 20px; background: var(--muted); border-radius: var(--r-sm); overflow: hidden; border: 1px solid var(--bd); }
+.ba-fill { height: 100%; border-radius: var(--r-sm); display: flex; align-items: center; padding: 0 6px; }
+.ba-bef  { background: #e8e1d9; }
+.ba-aft-e { background: rgba(22,163,74,.2); }
+.ba-aft-m { background: rgba(217,119,6,.2); }
+.ba-aft-h { background: rgba(194,96,10,.25); }
+.ba-val   { font-size: 10.5px; font-weight: 700; color: var(--fg); }
+.formula  { background: var(--muted); border: 1px solid var(--bd); border-radius: var(--r-sm);
+            padding: 10px 12px; font: 11.5px/2.0 var(--mono); color: var(--fg2); }
+.fh { color: var(--p-dk); font-weight: 700; }
+.pill-list { display: flex; flex-direction: column; gap: 5px; margin-top: 9px; }
+.pill { display: flex; align-items: center; gap: 7px; font-size: 11.5px; color: var(--fg2); }
+.pdot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+
+/* ══════ SPINNER ══════ */
+.spinner { width: 12px; height: 12px; border: 2px solid var(--bd); border-top-color: var(--p);
+           border-radius: 50%; animation: spin .6s linear infinite; display: inline-block; }
+
+/* ══════ KEYFRAMES ══════ */
+@keyframes blink   { 0%,100%{opacity:1}50%{opacity:.2} }
+@keyframes fadein  { from{opacity:0;transform:translateX(-4px)}to{opacity:1;transform:none} }
+@keyframes spin    { to{transform:rotate(360deg)} }
+</style>
+</head>
+<body>
+<div id="app">
+
+<!-- ══════ HEADER ══════ -->
+<header class="hdr">
+  <div class="hdr-logo">
+    <div class="logo-ico" style="font-size:11px;font-weight:800;letter-spacing:-.5px;color:#fff">SL</div>
+    <div>
+      <div class="logo-text">Agentic Security Lab</div>
+      <div class="logo-sub">OpenEnv · Qwen2.5-3B · GRPO</div>
+    </div>
+  </div>
+
+  <div class="hdr-sep"></div>
+
+  <div class="sc-tabs">
+    <button class="sc-tab on" id="tab-easy"   onclick="selectSc('easy')">Easy</button>
+    <button class="sc-tab"    id="tab-medium" onclick="selectSc('medium')">Medium</button>
+    <button class="sc-tab"    id="tab-hard"   onclick="selectSc('hard')">Hard</button>
+  </div>
+
+  <div class="sc-meta" id="sc-meta">
+    <div class="sc-chip"><div class="sc-chip-v" id="m-pkgs">—</div><div class="sc-chip-l">Packages</div></div>
+    <div class="sc-chip"><div class="sc-chip-v" id="m-secs">—</div><div class="sc-chip-l">Secrets</div></div>
+    <div class="sc-chip"><div class="sc-chip-v" id="m-teams">—</div><div class="sc-chip-l">Teams</div></div>
+    <div class="sc-chip"><div class="sc-chip-v" id="m-exfil">—</div><div class="sc-chip-l">Exfil Step</div></div>
+  </div>
+
+  <div class="ep-badge ep-ready" id="ep-badge"><div class="ep-dot"></div><span id="ep-txt">Ready</span></div>
+</header>
+
+<!-- ══════ INCIDENT BANNER ══════ -->
+<div class="banner hidden" id="banner">
+  <div style="flex:1">
+    <div class="ban-title">Active Security Incident</div>
+    <div class="ban-desc" id="ban-desc">Loading…</div>
+    <div class="ban-meta">
+      <div class="ban-kv"><div class="ban-k">Exfil Window</div><div class="ban-v" id="ban-ef">—</div></div>
+      <div class="ban-kv"><div class="ban-k">Max Steps</div><div class="ban-v" id="ban-mx">—</div></div>
+      <div class="ban-kv"><div class="ban-k">Mode</div><div class="ban-v">benchmark</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════ CONTROLS ══════ -->
+<div class="ctrl-row">
+  <button class="btn btn-p" onclick="startEp()" id="btn-start">▶ Start Episode</button>
+  <button class="btn btn-o" onclick="runDemo()" id="btn-demo" disabled>Run Demo</button>
+  <button class="btn btn-s" onclick="stepDemo()" id="btn-step" disabled>→ Step</button>
+  <button class="btn btn-d" onclick="resetEp()" id="btn-rst"  disabled>↺ Reset</button>
+  <div class="rwd-pill"><span class="rwd-v" id="rwd-v">0.000</span><span class="rwd-l">reward</span></div>
+</div>
+
+<!-- ══════ MAIN GRID ══════ -->
+<div class="grid">
+
+  <!-- LEFT -->
+  <div class="left-col">
+    <div class="card">
+      <div class="ch"><span class="ct">Package Dependencies</span><span class="cs" id="graph-cs">0 nodes · 0 risks</span></div>
+      <div class="graph-bg">
+        <svg id="pkg-graph" viewBox="0 0 248 168" style="height:168px">
+          <text x="124" y="88" text-anchor="middle" fill="#a8a29e" font-size="11" font-family="system-ui">Select a scenario</text>
+        </svg>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="ch"><span class="ct">Packages in Scope</span><span class="cs" id="pkg-cnt">0 packages</span></div>
+      <div class="cb">
+        <div class="pkg-list" id="pkg-list">
+          <div style="color:var(--fg3);font-size:11px;text-align:center;padding:12px">No episode active</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="ch"><span class="ct">Secrets at Risk</span></div>
+      <div class="cb">
+        <div class="sec-list" id="sec-list">
+          <div style="color:var(--fg3);font-size:11px;text-align:center;padding:10px">No episode active</div>
+        </div>
+      </div>
+    </div>
+  </div><!-- /left -->
+
+  <!-- CENTER -->
+  <div class="mid-col">
+    <div class="card" style="overflow:hidden">
+      <div class="log-bar">
+        <div class="ld ld1"></div><div class="ld ld2"></div><div class="ld ld3"></div>
+        <span class="llbl">agent@security-lab ~ incident-response</span>
+        <span class="lspin hidden" id="lspin"><span class="spinner"></span></span>
+      </div>
+      <div id="tlog">
+        <span class="ll sys">Agentic Security Lab — Supply Chain Incident Response</span>
+<span class="ll sys">Model: Qwen2.5-3B-Instruct + GRPO · TRL + Unsloth 4-bit QLoRA</span>
+<span class="ll sep"> </span>
+<span class="ll" style="color:#484f58">Select a scenario and click ▶ Start Episode to begin.</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="ch"><span class="ct">Agent Actions</span><span class="cs" id="act-cs">Demo Mode</span></div>
+      <div class="cb">
+        <div class="act-grid">
+          <button class="abtn" onclick="qAct('scan_logs')"        id="ab-scan" disabled title="Search CI/CD logs (+0.02)"><span class="an">Scan Logs</span><span class="ar">+0.02</span></button>
+          <button class="abtn" onclick="qAct('inspect_package')"  id="ab-insp" disabled title="Check publisher and IOCs (+0.01)"><span class="an">Inspect Pkg</span><span class="ar">+0.01</span></button>
+          <button class="abtn" onclick="qAct('check_dependents')" id="ab-deps" disabled title="Trace downstream services (+0.01)"><span class="an">Check Deps</span><span class="ar">+0.01</span></button>
+          <button class="abtn" onclick="qAct('quarantine')"       id="ab-qua"  disabled title="Yank malicious package (+0.15)"><span class="an">Quarantine</span><span class="ar">+0.15</span></button>
+          <button class="abtn" onclick="qAct('rotate_secret')"    id="ab-rot"  disabled title="Rotate credential (+0.12)"><span class="an">Rotate Secret</span><span class="ar">+0.12</span></button>
+          <button class="abtn" onclick="qAct('notify')"           id="ab-not"  disabled title="Alert affected team (+0.04)"><span class="an">Notify Team</span><span class="ar">+0.04</span></button>
+          <button class="abtn" onclick="qAct('conclude')"         id="ab-con"  disabled title="End and score episode"><span class="an">Conclude</span><span class="ar">+bonus</span></button>
+          <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:6px;border:1px solid var(--bd);border-radius:var(--r-sm);background:var(--muted);gap:2px">
+            <span style="font-size:9px;font-weight:600;color:var(--fg3);text-transform:uppercase;letter-spacing:.04em">FP Penalty</span>
+            <span style="font-size:11px;font-weight:700;font-family:var(--mono);color:var(--fg2)">−0.05</span>
+          </div>
+        </div>
+        <div class="prow hidden" id="prow">
+          <select class="psel" id="psel"><option value="">Select target…</option></select>
+          <button class="btn btn-p" onclick="execAct()" style="padding:6px 12px;font-size:12px">Execute</button>
+          <button class="btn btn-s" onclick="cancelAct()" style="padding:6px 9px;font-size:12px">✕</button>
+        </div>
+      </div>
+    </div>
+  </div><!-- /center -->
+
+  <!-- RIGHT -->
+  <div class="right-col">
+
+    <!-- Threat ring -->
+    <div class="card">
+      <div class="ch"><span class="ct">Threat Actor Progress</span><span class="cs" id="att-step">—</span></div>
+      <div class="ring-wrap">
+        <svg width="106" height="106" viewBox="0 0 106 106">
+          <circle cx="53" cy="53" r="44" fill="none" stroke="#f5f0e8" stroke-width="9"/>
+          <circle id="ring-arc" cx="53" cy="53" r="44" fill="none" stroke="#262626"
+                  stroke-width="9" stroke-linecap="round"
+                  stroke-dasharray="276.5" stroke-dashoffset="276.5"
+                  transform="rotate(-90 53 53)" style="transition:stroke-dashoffset .5s ease"/>
+        </svg>
+        <div class="ring-pct" id="ring-pct">0%</div>
+        <div class="ring-sub">penetration</div>
+        <div class="ring-spacer"></div>
+        <div class="ring-row">
+          <div class="ring-kv"><div class="ring-v" id="r-step">0</div><div class="ring-k">Step</div></div>
+          <div class="ring-kv"><div class="ring-v" id="r-unc" style="color:var(--p)">—</div><div class="ring-k">Uncertainty</div></div>
+          <div class="ring-kv"><div class="ring-v" id="r-rem">—</div><div class="ring-k">Remaining</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Score breakdown -->
+    <div class="card">
+      <div class="ch"><span class="ct">Score Breakdown</span></div>
+      <div class="cb">
+        <div class="si-list">
+          <div class="si sq"><div class="si-row"><span class="si-lbl">Quarantine</span><div class="si-right"><span class="si-wt">×0.35</span><span class="si-pct" id="sq">0%</span></div></div><div class="si-bar"><div class="si-fill" id="bq" style="width:0%"></div></div></div>
+          <div class="si sr"><div class="si-row"><span class="si-lbl">Rotate</span><div class="si-right"><span class="si-wt">×0.35</span><span class="si-pct" id="sr">0%</span></div></div><div class="si-bar"><div class="si-fill" id="br" style="width:0%"></div></div></div>
+          <div class="si sn"><div class="si-row"><span class="si-lbl">Notify</span><div class="si-right"><span class="si-wt">×0.20</span><span class="si-pct" id="sn">0%</span></div></div><div class="si-bar"><div class="si-fill" id="bn" style="width:0%"></div></div></div>
+          <div class="si sc2"><div class="si-row"><span class="si-lbl">Contain</span><div class="si-right"><span class="si-wt">×0.10</span><span class="si-pct" id="sc2">100%</span></div></div><div class="si-bar"><div class="si-fill" id="bc" style="width:100%"></div></div></div>
+        </div>
+      </div>
+      <div class="tot-row"><span class="tot-l">Total Score</span><span class="tot-v" id="tot-v">0.100</span></div>
+    </div>
+
+    <!-- Reward chart -->
+    <div class="card">
+      <div class="chart-cb">
+        <div class="chart-l">Cumulative Reward</div>
+        <canvas id="rchart"></canvas>
+      </div>
+    </div>
+
+    <!-- Mission phases -->
+    <div class="card">
+      <div class="ch"><span class="ct">Response Phases</span></div>
+      <div class="cb" style="padding:8px 10px">
+        <div class="phase-list">
+          <div class="ph" id="ph-investigate">    <div class="ph-ring" id="phr-investigate">1</div>    <span class="ph-lbl">Reconnaissance</span></div>
+          <div class="ph" id="ph-trace_root_cause"><div class="ph-ring" id="phr-trace_root_cause">2</div><span class="ph-lbl">Root Cause Analysis</span></div>
+          <div class="ph" id="ph-contain">        <div class="ph-ring" id="phr-contain">3</div>        <span class="ph-lbl">Containment</span></div>
+          <div class="ph" id="ph-recover">        <div class="ph-ring" id="phr-recover">4</div>        <span class="ph-lbl">Secret Rotation</span></div>
+          <div class="ph" id="ph-notify">         <div class="ph-ring" id="phr-notify">5</div>         <span class="ph-lbl">Team Notification</span></div>
+          <div class="ph" id="ph-conclude">       <div class="ph-ring" id="phr-conclude">6</div>       <span class="ph-lbl">Incident Closure</span></div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /right -->
+</div><!-- /grid -->
+
+<!-- ══════ TRAINING RESULTS ══════ -->
+<div class="res-section">
+  <div class="res-head">
+    <div class="res-title">Training Results — Qwen2.5-3B Before &amp; After GRPO</div>
+    <div class="res-sub">Curriculum: easy → medium → hard · LoRA r=32 · group_size=4 · T4 GPU · scale_rewards=False</div>
+  </div>
+  <div class="res-grid">
+    <div class="card">
+      <div class="ch"><span class="ct">Model Performance Comparison</span></div>
+      <div class="cb">
+        <div style="display:grid;grid-template-columns:68px 1fr 1fr;gap:8px;margin-bottom:7px">
+          <div></div>
+          <div style="font-size:10px;font-weight:600;color:var(--fg3);text-align:center;text-transform:uppercase;letter-spacing:.05em">Baseline</div>
+          <div style="font-size:10px;font-weight:600;color:var(--grn);text-align:center;text-transform:uppercase;letter-spacing:.05em">Trained (GRPO)</div>
+        </div>
+        <div class="ba-row"><span class="ba-lbl">Easy</span>
+          <div class="ba-bg"><div class="ba-fill ba-bef"   style="width:32%"><span class="ba-val">0.32</span></div></div>
+          <div class="ba-bg"><div class="ba-fill ba-aft-e" style="width:87%"><span class="ba-val">0.87</span></div></div>
+        </div>
+        <div class="ba-row"><span class="ba-lbl">Medium</span>
+          <div class="ba-bg"><div class="ba-fill ba-bef"   style="width:14%"><span class="ba-val">0.14</span></div></div>
+          <div class="ba-bg"><div class="ba-fill ba-aft-m" style="width:63%"><span class="ba-val">0.63</span></div></div>
+        </div>
+        <div class="ba-row"><span class="ba-lbl">Hard</span>
+          <div class="ba-bg"><div class="ba-fill ba-bef"   style="width:5%"><span class="ba-val">0.05</span></div></div>
+          <div class="ba-bg"><div class="ba-fill ba-aft-h" style="width:38%"><span class="ba-val">0.38</span></div></div>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="ch"><span class="ct">Reward Formula</span></div>
+      <div class="cb">
+        <div class="formula">
+          <span style="color:var(--p-dk)">score</span> =<br>
+          &nbsp;&nbsp;<span class="fh">0.35</span> × quarantine_ratio +<br>
+          &nbsp;&nbsp;<span class="fh">0.35</span> × rotate_ratio +<br>
+          &nbsp;&nbsp;<span class="fh">0.20</span> × notify_ratio +<br>
+          &nbsp;&nbsp;<span class="fh">0.10</span> × contain_ratio
+        </div>
+        <div class="pill-list">
+          <div class="pill"><div class="pdot" style="background:var(--fg2)"></div>Attacker breach: <b style="font-family:var(--mono);color:var(--fg);margin-left:3px">−0.20</b> + contain_ratio = 0</div>
+          <div class="pill"><div class="pdot" style="background:var(--amb)"></div>False positive quarantine: <b style="font-family:var(--mono);color:var(--amb);margin-left:3px">−0.05</b> per clean package</div>
+          <div class="pill"><div class="pdot" style="background:var(--blue)"></div>StarPO-S: keep top 50% prompts by reward variance</div>
+          <div class="pill"><div class="pdot" style="background:var(--grn)"></div>Adaptive attacker: tightens deadline as agent improves</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+</div><!-- /app -->
+
+<script>
+// ══════════════════════════════════════════
+// SCENARIO DATA
+// ══════════════════════════════════════════
+const SD = {
+  easy: {
+    pkgs:['axios@1.7.4','axios@1.7.3'], mal:['axios@1.7.4'],
+    secrets:[{name:'STRIPE_SECRET_KEY',critical:true,owner:'payments-service'},{name:'INTERNAL_API_TOKEN',critical:false,owner:'api-gateway'}],
+    rq:['axios@1.7.4'], rr:['STRIPE_SECRET_KEY','INTERNAL_API_TOKEN'], rn:['payments-service','auth-service','api-gateway'],
+    maxSteps:20, exfil:14,
+    banDesc:'axios@1.7.4 compromised via hijacked maintainer. Exfiltrating process.env to 185.220.101.42. STRIPE_SECRET_KEY and INTERNAL_API_TOKEN at risk.',
+    graph:{
+      nodes:[{id:'axios@1.7.4',x:148,y:46,mal:true,t:'pkg'},{id:'axios@1.7.3',x:56,y:46,mal:false,t:'pkg'},{id:'payments',x:58,y:132,mal:false,t:'svc'},{id:'auth-service',x:148,y:140,mal:false,t:'svc'},{id:'api-gateway',x:210,y:132,mal:false,t:'svc'}],
+      edges:[{f:'axios@1.7.4',t:'payments'},{f:'axios@1.7.4',t:'auth-service'},{f:'axios@1.7.4',t:'api-gateway'}],
+    },
+    demo:[
+      {c:'scan_logs',p:{package:'axios@1.7.4'},d:900},{c:'inspect_package',p:{package:'axios@1.7.4'},d:700},{c:'inspect_package',p:{package:'axios@1.7.3'},d:700},
+      {c:'check_dependents',p:{package:'axios@1.7.4'},d:700},{c:'quarantine',p:{package:'axios@1.7.4'},d:1000},
+      {c:'rotate_secret',p:{secret:'STRIPE_SECRET_KEY'},d:700},{c:'rotate_secret',p:{secret:'INTERNAL_API_TOKEN'},d:700},
+      {c:'notify',p:{team:'payments-service'},d:500},{c:'notify',p:{team:'auth-service'},d:500},{c:'notify',p:{team:'api-gateway'},d:500},
+      {c:'conclude',p:{},d:1200},
+    ],
+  },
+  medium: {
+    pkgs:['node-fetch@3.3.2','form-data@4.0.1','form-data@4.0.0'], mal:['form-data@4.0.1'],
+    secrets:[{name:'AWS_ACCESS_KEY_ID',critical:true,owner:'data-pipeline'},{name:'AWS_SECRET_ACCESS_KEY',critical:true,owner:'data-pipeline'},{name:'SENDGRID_API_KEY',critical:true,owner:'email-sender'},{name:'WEBHOOK_SIGNING_SECRET',critical:false,owner:'webhook-processor'},{name:'POSTGRES_PASSWORD',critical:true,owner:'reporting-service'}],
+    rq:['form-data@4.0.1'],
+    rr:['AWS_ACCESS_KEY_ID','AWS_SECRET_ACCESS_KEY','SENDGRID_API_KEY','WEBHOOK_SIGNING_SECRET','POSTGRES_PASSWORD'],
+    rn:['checkout-service','inventory-api','notification-service','reporting-service','search-service','legacy-importer','data-pipeline','webhook-processor','email-sender','file-uploader','crm-sync','analytics-job'],
+    maxSteps:25, exfil:18,
+    banDesc:'form-data@4.0.1 silently backdoored. DNS exfil via TXT records to attacker-c2.net. AWS credentials actively leaking from data-pipeline.',
+    graph:{
+      nodes:[{id:'node-fetch@3.3.2',x:126,y:34,mal:false,t:'pkg'},{id:'form-data@4.0.1',x:126,y:88,mal:true,t:'pkg'},{id:'form-data@4.0.0',x:50,y:88,mal:false,t:'pkg'},{id:'checkout-svc',x:42,y:148,mal:false,t:'svc'},{id:'data-pipeline',x:100,y:154,mal:false,t:'svc'},{id:'email-sender',x:160,y:148,mal:false,t:'svc'},{id:'+9 more',x:216,y:148,mal:false,t:'svc'}],
+      edges:[{f:'node-fetch@3.3.2',t:'form-data@4.0.1'},{f:'form-data@4.0.1',t:'checkout-svc'},{f:'form-data@4.0.1',t:'data-pipeline'},{f:'form-data@4.0.1',t:'email-sender'},{f:'form-data@4.0.1',t:'+9 more'},{f:'node-fetch@3.3.2',t:'checkout-svc'}],
+    },
+    demo:[
+      {c:'scan_logs',p:{package:'node-fetch@3.3.2'},d:700},{c:'inspect_package',p:{package:'node-fetch@3.3.2'},d:700},{c:'check_dependents',p:{package:'node-fetch@3.3.2'},d:700},
+      {c:'inspect_package',p:{package:'form-data@4.0.1'},d:700},{c:'scan_logs',p:{package:'form-data@4.0.1'},d:700},{c:'check_dependents',p:{package:'form-data@4.0.1'},d:700},
+      {c:'quarantine',p:{package:'form-data@4.0.1'},d:1000},
+      ...['AWS_ACCESS_KEY_ID','AWS_SECRET_ACCESS_KEY','SENDGRID_API_KEY','WEBHOOK_SIGNING_SECRET','POSTGRES_PASSWORD'].map(s=>({c:'rotate_secret',p:{secret:s},d:550})),
+      ...['checkout-service','inventory-api','notification-service','reporting-service','search-service','legacy-importer','data-pipeline','webhook-processor','email-sender','file-uploader','crm-sync','analytics-job'].map(t=>({c:'notify',p:{team:t},d:320})),
+      {c:'conclude',p:{},d:1200},
+    ],
+  },
+  hard: {
+    pkgs:['lodash@4.17.21','express@4.18.2','1odash@4.17.21','expresss@4.18.2','axios-http@1.7.4','node-fetch-lite@3.3.2','dotenvv@16.0.3'],
+    mal:['1odash@4.17.21','expresss@4.18.2','axios-http@1.7.4','node-fetch-lite@3.3.2','dotenvv@16.0.3'],
+    secrets:[{name:'NPM_TOKEN',critical:true},{name:'GITHUB_ACTIONS_TOKEN',critical:true},{name:'AWS_ACCESS_KEY_ID',critical:true},{name:'AWS_SECRET_ACCESS_KEY',critical:true},{name:'DATABASE_URL',critical:true},{name:'JWT_SECRET',critical:true},{name:'REDIS_PASSWORD',critical:false},{name:'INTERNAL_WEBHOOK_KEY',critical:false}],
+    rq:['1odash@4.17.21','expresss@4.18.2','axios-http@1.7.4','node-fetch-lite@3.3.2','dotenvv@16.0.3'],
+    rr:['NPM_TOKEN','GITHUB_ACTIONS_TOKEN','AWS_ACCESS_KEY_ID','AWS_SECRET_ACCESS_KEY','DATABASE_URL','JWT_SECRET','REDIS_PASSWORD','INTERNAL_WEBHOOK_KEY'],
+    rn:['user-service','cart-service','admin-panel','reporting-v2','api-v2','graphql-gateway','rest-proxy','auth-v2','session-manager','mobile-bff','web-bff','partner-api','scraper-job','feed-aggregator','rss-service','integration-tests','deploy-scripts','migration-runner','seed-service','config-loader'],
+    maxSteps:35, exfil:10,
+    banDesc:'CRITICAL — PhantomRaven: 5 slopsquatted packages. NPM_TOKEN & GITHUB_ACTIONS_TOKEN exfiltrating. Attacker has a 10-step head start.',
+    graph:{
+      nodes:[{id:'lodash',x:44,y:26,mal:false,t:'pkg'},{id:'express',x:126,y:26,mal:false,t:'pkg'},{id:'1odash',x:208,y:26,mal:true,t:'pkg'},{id:'expresss',x:44,y:78,mal:true,t:'pkg'},{id:'axios-http',x:126,y:78,mal:true,t:'pkg'},{id:'node-fetch-lite',x:208,y:78,mal:true,t:'pkg'},{id:'dotenvv',x:126,y:128,mal:true,t:'pkg'},{id:'→ 20 services',x:126,y:162,mal:false,t:'svc'}],
+      edges:[{f:'1odash',t:'→ 20 services'},{f:'expresss',t:'→ 20 services'},{f:'axios-http',t:'→ 20 services'},{f:'node-fetch-lite',t:'→ 20 services'},{f:'dotenvv',t:'→ 20 services'}],
+    },
+    demo:[
+      ...['1odash@4.17.21','expresss@4.18.2','axios-http@1.7.4','node-fetch-lite@3.3.2','dotenvv@16.0.3'].map(p=>({c:'scan_logs',p:{package:p},d:560})),
+      ...['1odash@4.17.21','expresss@4.18.2','axios-http@1.7.4','node-fetch-lite@3.3.2','dotenvv@16.0.3'].map(p=>({c:'quarantine',p:{package:p},d:700})),
+      ...['NPM_TOKEN','GITHUB_ACTIONS_TOKEN','AWS_ACCESS_KEY_ID','AWS_SECRET_ACCESS_KEY','DATABASE_URL','JWT_SECRET','REDIS_PASSWORD','INTERNAL_WEBHOOK_KEY'].map(s=>({c:'rotate_secret',p:{secret:s},d:460})),
+      ...['user-service','cart-service','admin-panel','reporting-v2','api-v2','graphql-gateway','rest-proxy','auth-v2','session-manager','mobile-bff','web-bff','partner-api','scraper-job','feed-aggregator','rss-service','integration-tests','deploy-scripts','migration-runner','seed-service','config-loader'].map(t=>({c:'notify',p:{team:t},d:240})),
+      {c:'conclude',p:{},d:1200},
+    ],
+  },
+};
+
+// ══════════════════════════════════════════
+// STATE
+// ══════════════════════════════════════════
+let S = { sc:'easy', active:false, done:false, step:0, maxSteps:20, exfil:14,
+  totalReward:0, rewardHist:[], quarantined:[], rotated:[], notified:[],
+  attProg:0, attBreach:false, demoIdx:0, demoRunning:false, demoTimer:null, planProg:{} };
+
+// ══════════════════════════════════════════
+// CHART
+// ══════════════════════════════════════════
+const rChart = new Chart(document.getElementById('rchart').getContext('2d'), {
+  type:'line',
+  data:{ labels:[], datasets:[{ data:[], borderColor:'#c2600a', backgroundColor:'rgba(194,96,10,.1)',
+    borderWidth:2, pointRadius:2, tension:.35, fill:true }] },
+  options:{ responsive:true, maintainAspectRatio:true, plugins:{ legend:{ display:false } },
+    scales:{ x:{ display:false }, y:{ display:true,
+      ticks:{ color:'#a8a29e', font:{ size:9, family:'monospace' } },
+      grid:{ color:'rgba(168,162,158,.15)' } } }, animation:{ duration:200 } },
+});
+
+// ══════════════════════════════════════════
+// SCENARIO SELECT
+// ══════════════════════════════════════════
+function selectSc(sc) {
+  S.sc = sc;
+  ['easy','medium','hard'].forEach(s => document.getElementById('tab-'+s)?.classList.toggle('on', s===sc));
+  const d = SD[sc];
+  document.getElementById('m-pkgs').textContent  = d.pkgs.length;
+  document.getElementById('m-secs').textContent  = d.secrets.length;
+  document.getElementById('m-teams').textContent = d.rn.length;
+  document.getElementById('m-exfil').textContent = `Step ${d.exfil}`;
+  drawGraph(sc);
+  if(S.active) resetEp();
+}
+
+// ══════════════════════════════════════════
+// SVG GRAPH
+// ══════════════════════════════════════════
+function drawGraph(sc) {
+  const { nodes, edges } = SD[sc].graph;
+  const svg = document.getElementById('pkg-graph');
+  const ns = 'http://www.w3.org/2000/svg';
+  svg.innerHTML = '';
+  const defs = document.createElementNS(ns,'defs');
+  const mk = document.createElementNS(ns,'marker');
+  [['id','arr'],['viewBox','0 0 8 8'],['refX','7'],['refY','4'],['markerWidth','5'],['markerHeight','5'],['orient','auto-start-reverse']].forEach(([k,v])=>mk.setAttribute(k,v));
+  const mp = document.createElementNS(ns,'path'); mp.setAttribute('d','M0 0 L8 4 L0 8z'); mp.setAttribute('fill','#d6cfc6');
+  mk.appendChild(mp); defs.appendChild(mk); svg.appendChild(defs);
+  const nm = {}; nodes.forEach(n=>nm[n.id]=n);
+  edges.forEach(e=>{
+    const f=nm[e.f],t=nm[e.t]; if(!f||!t) return;
+    const l=document.createElementNS(ns,'line');
+    [['x1',f.x],['y1',f.y],['x2',t.x],['y2',t.y],['stroke','#e8e1d9'],['stroke-width','1.5'],['marker-end','url(#arr)']].forEach(([k,v])=>l.setAttribute(k,v));
+    svg.appendChild(l);
+  });
+  nodes.forEach(n=>{
+    const g=document.createElementNS(ns,'g');
+    g.setAttribute('id','nd-'+n.id.replace(/[^a-zA-Z0-9]/g,'_'));
+    g.setAttribute('transform',`translate(${n.x},${n.y})`);
+    const r=n.t==='svc'?10:13;
+    const c=document.createElementNS(ns,'circle'); c.setAttribute('r',r);
+    if(n.mal){ c.setAttribute('fill','#f5f5f4'); c.setAttribute('stroke','#1c1917'); c.setAttribute('stroke-width','2'); }
+    else if(n.t==='svc'){ c.setAttribute('fill','#eff6ff'); c.setAttribute('stroke','#93c5fd'); c.setAttribute('stroke-width','1.5'); }
+    else{ c.setAttribute('fill','#faf6f0'); c.setAttribute('stroke','#d6cfc6'); c.setAttribute('stroke-width','1.5'); }
+    g.appendChild(c);
+    const ic=document.createElementNS(ns,'text');
+    [['text-anchor','middle'],['dy','4'],['font-size',n.t==='svc'?'8':'9'],['font-family','system-ui'],['fill',n.mal?'#1c1917':n.t==='svc'?'#3b82f6':'#a8a29e']].forEach(([k,v])=>ic.setAttribute(k,v));
+    ic.textContent=n.mal?'!':n.t==='svc'?'●':'○'; g.appendChild(ic);
+    const lb=document.createElementNS(ns,'text');
+    [['text-anchor','middle'],['y',n.t==='svc'?'22':'26'],['font-size','7.5'],['font-family','monospace'],['fill',n.mal?'#1c1917':'#a8a29e']].forEach(([k,v])=>lb.setAttribute(k,v));
+    lb.textContent=n.id.length>16?n.id.slice(0,14)+'..':n.id; g.appendChild(lb);
+    svg.appendChild(g);
+  });
+  const mal=nodes.filter(n=>n.mal).length;
+  document.getElementById('graph-cs').textContent=`${nodes.length} nodes · ${mal} risks`;
+}
+
+function gNodeStatus(id,st){
+  const g=document.getElementById('nd-'+id.replace(/[^a-zA-Z0-9]/g,'_')); if(!g) return;
+  const c=g.querySelector('circle'),ic=g.querySelector('text');
+  if(st==='quarantined'){ c.setAttribute('fill','#f5f0e8'); c.setAttribute('stroke','#d6cfc6'); ic.textContent='✕'; ic.setAttribute('fill','#a8a29e'); }
+  else if(st==='clean'){ c.setAttribute('fill','#f0fdf4'); c.setAttribute('stroke','#86efac'); ic.textContent='✓'; ic.setAttribute('fill','#16a34a'); }
+  else if(st==='mal'){ c.setAttribute('fill','#f5f5f4'); c.setAttribute('stroke','#1c1917'); ic.textContent='!'; ic.setAttribute('fill','#1c1917'); }
+}
+
+// ══════════════════════════════════════════
+// LOG
+// ══════════════════════════════════════════
+function log(t,txt){ const el=document.getElementById('tlog'),s=document.createElement('span'); s.className='ll '+t; s.textContent=txt; el.appendChild(s); el.appendChild(document.createTextNode('\n')); el.scrollTop=el.scrollHeight; }
+function clearLog(){ document.getElementById('tlog').innerHTML=''; }
+
+// ══════════════════════════════════════════
+// EPISODE
+// ══════════════════════════════════════════
+async function startEp(){ clearLog(); log('sys',`Starting ${S.sc.toUpperCase()} episode…`); setStatus('active','Active Incident'); startDemo(); }
+
+function startDemo(){
+  const d=SD[S.sc];
+  Object.assign(S,{active:true,done:false,step:0,maxSteps:d.maxSteps,exfil:d.exfil,totalReward:0,rewardHist:[0],quarantined:[],rotated:[],notified:[],attProg:0,attBreach:false,demoIdx:0,demoRunning:false,planProg:{investigate:false,trace_root_cause:false,contain:false,recover:false,notify:false,conclude:false}});
+  showBanner(); renderPkgList(d.pkgs,[]); renderSecList(d.secrets,[]); updateMetrics();
+  setActBtns(true);
+  document.getElementById('btn-demo').disabled=false; document.getElementById('btn-step').disabled=false;
+  document.getElementById('btn-rst').disabled=false;  document.getElementById('btn-start').disabled=true;
+  log('alr',d.banDesc); log('res',`Packages: ${d.pkgs.join(', ')}`); log('res',`Exfil window: step ${d.exfil} / ${d.maxSteps}`); log('sep',' ');
+}
+
+function resetEp(){
+  if(S.demoTimer) clearTimeout(S.demoTimer);
+  Object.assign(S,{active:false,done:false,demoRunning:false,totalReward:0,rewardHist:[],step:0,attProg:0,attBreach:false,quarantined:[],rotated:[],notified:[]});
+  setStatus('ready','Ready'); clearLog();
+  log('sys','Agentic Security Lab — Supply Chain Incident Response');
+  log('sys','Model: Qwen2.5-3B-Instruct + GRPO · TRL + Unsloth 4-bit QLoRA');
+  log('sep',' '); log('','Select a scenario and click ▶ Start Episode to begin.');
+  document.getElementById('banner').classList.add('hidden');
+  document.getElementById('btn-start').disabled=false; document.getElementById('btn-demo').disabled=true;
+  document.getElementById('btn-step').disabled=true;   document.getElementById('btn-rst').disabled=true;
+  document.getElementById('btn-demo').textContent='Run Demo';
+  setActBtns(false); hideProw(); updateMetrics(); resetChart(); updatePlan({});
+  document.getElementById('pkg-list').innerHTML='<div style="color:var(--fg3);font-size:11px;text-align:center;padding:12px">No episode active</div>';
+  document.getElementById('sec-list').innerHTML='<div style="color:var(--fg3);font-size:11px;text-align:center;padding:10px">No episode active</div>';
+  drawGraph(S.sc);
+}
+
+// ══════════════════════════════════════════
+// DEMO RUNNER
+// ══════════════════════════════════════════
+async function runDemo(){
+  if(S.demoRunning){ clearTimeout(S.demoTimer); S.demoRunning=false; document.getElementById('btn-demo').textContent='Run Demo'; return; }
+  if(!S.active||S.done){ await startEp(); await new Promise(r=>setTimeout(r,400)); }
+  S.demoRunning=true; document.getElementById('btn-demo').textContent='Pause'; tick();
+}
+function tick(){
+  if(!S.demoRunning||S.done){ S.demoRunning=false; document.getElementById('btn-demo').textContent='Run Demo'; return; }
+  const seq=SD[S.sc].demo; if(S.demoIdx>=seq.length){ S.demoRunning=false; document.getElementById('btn-demo').textContent='Run Demo'; return; }
+  const st=seq[S.demoIdx++]; simStep(st.c,st.p); S.demoTimer=setTimeout(tick,st.d+400);
+}
+function stepDemo(){ if(!S.active||S.done) return; const seq=SD[S.sc].demo; if(S.demoIdx>=seq.length) return; const st=seq[S.demoIdx++]; simStep(st.c,st.p); }
+
+// ══════════════════════════════════════════
+// SIM STEP
+// ══════════════════════════════════════════
+const RWDS={scan_logs:.02,inspect_package:.01,check_dependents:.01,quarantine:.15,rotate_secret:.12,notify:.04,conclude:.1};
+
+function simStep(cmd,params){
+  const d=SD[S.sc]; S.step++;
+  log('cmd',`${cmd}(${Object.entries(params).map(([k,v])=>`${k}=${v}`).join(', ')})`);
+  let rwd=RWDS[cmd]??0, msg='';
+  if(cmd==='scan_logs'&&params.package){ const m=d.mal.includes(params.package); if(m) gNodeStatus(params.package,'mal'); msg=m?`IOC found in ${params.package}: exfiltration attempt detected.`:`No suspicious activity in ${params.package}.`; }
+  else if(cmd==='inspect_package'&&params.package){ const m=d.mal.includes(params.package); gNodeStatus(params.package,m?'mal':'clean'); msg=`${params.package}: publisher=${m?'COMPROMISED':'verified-legitimate'}`; }
+  else if(cmd==='check_dependents'&&params.package){ msg=`Dependents of ${params.package}: ${d.rn.slice(0,5).join(', ')}${d.rn.length>5?` +${d.rn.length-5} more`:''}`;  }
+  else if(cmd==='quarantine'&&params.package){ if(d.mal.includes(params.package)){ if(!S.quarantined.includes(params.package)) S.quarantined.push(params.package); gNodeStatus(params.package,'quarantined'); msg=`[OK] Quarantined ${params.package} — yanked from registry.`; } else{ rwd=-0.05; msg=`False positive: ${params.package} is clean. Penalty −0.05.`; } }
+  else if(cmd==='rotate_secret'&&params.secret){ const s=d.secrets.find(x=>x.name===params.secret); rwd=s?.critical?0.12:0.06; if(!S.rotated.includes(params.secret)) S.rotated.push(params.secret); msg=`[OK] Rotated ${params.secret} (${s?.critical?'CRITICAL':'standard'}).`; }
+  else if(cmd==='notify'&&params.team){ if(!S.notified.includes(params.team)) S.notified.push(params.team); msg=`[OK] Breach notification sent to ${params.team}.`; }
+  else if(cmd==='conclude'){ msg='Concluding episode and computing final score…'; }
+  if(msg) log('res',msg);
+  S.attProg=Math.min(1,S.step/S.exfil);
+  if(S.step>=S.exfil&&!S.attBreach){ const cs=d.secrets.filter(x=>x.critical).every(x=>S.rotated.includes(x.name)); if(!cs){ S.attBreach=true; rwd-=0.2; log('err','[BREACH] Attacker exfiltrated credentials. Penalty −0.20.'); } }
+  S.totalReward+=rwd; S.rewardHist.push(S.totalReward);
+  log(rwd>=0?'rwp':'rwn',`reward: ${rwd>=0?'+':''}${rwd.toFixed(3)}  |  total: ${S.totalReward.toFixed(3)}`);
+  S.planProg={investigate:S.step>0,trace_root_cause:S.quarantined.length>0||S.step>3,contain:d.rq.every(p=>S.quarantined.includes(p)),recover:d.rr.every(s=>S.rotated.includes(s)),notify:d.rn.every(t=>S.notified.includes(t)),conclude:cmd==='conclude'};
+  if(cmd==='conclude'){ S.done=true; finishEp(); }
+  renderPkgList(d.pkgs,S.quarantined); renderSecList(d.secrets,S.rotated);
+  updateMetrics(); updateScores(); updatePlan(S.planProg); updateChart();
+  document.getElementById('rwd-v').textContent=S.totalReward.toFixed(3);
+}
+
+// ══════════════════════════════════════════
+// MANUAL ACTIONS
+// ══════════════════════════════════════════
+let _act=null;
+function qAct(a){ if(!S.active||S.done) return; _act=a; if(a==='conclude'){ hideProw(); simStep('conclude',{}); _act=null; return; } showProw(a); }
+function showProw(a){
+  const d=SD[S.sc],sel=document.getElementById('psel'); sel.innerHTML='<option value="">Select target…</option>';
+  const items=['scan_logs','inspect_package','check_dependents','quarantine'].includes(a)?d.pkgs.map(p=>({v:p,l:p+(d.mal.includes(p)?' ⚠':'')})):a==='rotate_secret'?d.secrets.map(s=>({v:s.name,l:s.name+(s.critical?' •':'')})):d.rn.map(t=>({v:t,l:t}));
+  items.forEach(({v,l})=>{ const o=document.createElement('option'); o.value=v; o.textContent=l; sel.appendChild(o); });
+  document.getElementById('prow').classList.remove('hidden');
+}
+function execAct(){ const v=document.getElementById('psel').value; if(!v) return; const p=['scan_logs','inspect_package','check_dependents','quarantine'].includes(_act)?{package:v}:_act==='rotate_secret'?{secret:v}:{team:v}; hideProw(); simStep(_act,p); _act=null; }
+function cancelAct(){ _act=null; hideProw(); }
+function hideProw(){ document.getElementById('prow').classList.add('hidden'); }
+
+// ══════════════════════════════════════════
+// EPISODE FINISH
+// ══════════════════════════════════════════
+function finishEp(){
+  const sc=computeScore();
+  log('sep',' '); log('sys','═══ EPISODE COMPLETE ═══'); log('sys',`Final Score: ${sc.toFixed(4)}`);
+  log(sc>=0.7?'ok':sc>=0.4?'res':'err',sc>=0.8?'EXCELLENT — Fully contained.':sc>=0.6?'GOOD — Major threats neutralized.':sc>=0.4?'PARTIAL — Some threats remain.':'INSUFFICIENT — Attacker maintained foothold.');
+  setStatus('done','Resolved'); setActBtns(false);
+}
+function computeScore(){
+  const d=SD[S.sc];
+  return .35*d.rq.filter(p=>S.quarantined.includes(p)).length/Math.max(1,d.rq.length)+.35*d.rr.filter(s=>S.rotated.includes(s)).length/Math.max(1,d.rr.length)+.20*d.rn.filter(t=>S.notified.includes(t)).length/Math.max(1,d.rn.length)+.10*(S.attBreach?0:1);
+}
+
+// ══════════════════════════════════════════
+// UI HELPERS
+// ══════════════════════════════════════════
+function showBanner(){
+  const d=SD[S.sc]; document.getElementById('banner').classList.remove('hidden');
+  document.getElementById('ban-desc').textContent=d.banDesc;
+  document.getElementById('ban-ef').textContent=`Step ${S.exfil}`;
+  document.getElementById('ban-mx').textContent=`${S.maxSteps} steps`;
+}
+function renderPkgList(pkgs,q){
+  const d=SD[S.sc];
+  document.getElementById('pkg-list').innerHTML=pkgs.map(p=>{ const isQ=q.includes(p),isM=d.mal.includes(p),st=isQ?'qua':isM?'mal':'unk'; return `<div class="pkg-row" onclick="qAct('inspect_package');document.getElementById('psel').value='${p}'"><div class="pip pi-${st}"></div><span class="pname ${st}">${p}</span><span class="pchip c-${st}">${isQ?'Yanked':isM?'Malicious':'Unknown'}</span></div>`; }).join('');
+  document.getElementById('pkg-cnt').textContent=`${pkgs.length} packages`;
+}
+function renderSecList(secs,r){
+  document.getElementById('sec-list').innerHTML=secs.map(s=>{ const rt=r.includes(s.name); return `<div class="sec-row"><span class="sbadge ${rt?'sb-rot':'sb-exp'}">${rt?'Rotated':'Exposed'}</span><span class="sname">${s.name}</span>${s.critical?'<span class="scrit">CRITICAL</span>':''}</div>`; }).join('');
+}
+function updateMetrics(){
+  const pct=Math.round(S.attProg*100);
+  document.getElementById('ring-pct').textContent=pct+'%';
+  document.getElementById('ring-arc').style.strokeDashoffset=276.5*(1-S.attProg);
+  document.getElementById('att-step').textContent=S.active?`Step ${S.step} / ${S.exfil}`:'—';
+  document.getElementById('r-step').textContent=S.step;
+  document.getElementById('r-unc').textContent=S.active?Math.max(0,.55-S.step*.025).toFixed(2):'—';
+  document.getElementById('r-rem').textContent=S.active?Math.max(0,S.maxSteps-S.step):'—';
+  document.getElementById('rwd-v').textContent=S.totalReward.toFixed(3);
+}
+function updateScores(){
+  const d=SD[S.sc]; if(!d) return;
+  const qr=d.rq.filter(p=>S.quarantined.includes(p)).length/Math.max(1,d.rq.length);
+  const rr=d.rr.filter(s=>S.rotated.includes(s)).length/Math.max(1,d.rr.length);
+  const nr=d.rn.filter(t=>S.notified.includes(t)).length/Math.max(1,d.rn.length);
+  const cr=S.attBreach?0:1;
+  const s=(id,bar,v)=>{ document.getElementById(id).textContent=Math.round(v*100)+'%'; document.getElementById(bar).style.width=(v*100)+'%'; };
+  s('sq','bq',qr); s('sr','br',rr); s('sn','bn',nr); s('sc2','bc',cr);
+  document.getElementById('tot-v').textContent=(.35*qr+.35*rr+.20*nr+.10*cr).toFixed(4);
+}
+function updatePlan(prog){
+  ['investigate','trace_root_cause','contain','recover','notify','conclude'].forEach((ph,i)=>{
+    const ring=document.getElementById('phr-'+ph),lbl=document.querySelector(`#ph-${ph} .ph-lbl`);
+    if(!ring) return;
+    ring.className='ph-ring'+(prog[ph]?' done':'');
+    ring.textContent=prog[ph]?'✓':i+1;
+    if(lbl) lbl.className='ph-lbl'+(prog[ph]?' done':'');
+  });
+}
+function updateChart(){ rChart.data.labels=S.rewardHist.map((_,i)=>i); rChart.data.datasets[0].data=S.rewardHist; rChart.update(); }
+function resetChart(){ rChart.data.labels=[]; rChart.data.datasets[0].data=[]; rChart.update(); }
+function setStatus(type,txt){ const b=document.getElementById('ep-badge'); b.className='ep-badge ep-'+type; document.getElementById('ep-txt').textContent=txt; }
+function setActBtns(on){ ['ab-scan','ab-insp','ab-deps','ab-qua','ab-rot','ab-not','ab-con'].forEach(id=>{ const el=document.getElementById(id); if(el) el.disabled=!on; }); }
+
+// ══════════════════════════════════════════
+// INIT
+// ══════════════════════════════════════════
+selectSc('easy');
+</script>
+</body>
+</html>

@@ -1,10 +1,12 @@
-"""Training entrypoints: expert SFT warmup + GRPO with all features wired in.
+"""Training entrypoints: expert SFT warmup + GRPO notebook handoff.
 
 Phase 0 (SFT warmup): collect_examples() + train_sft() — expert heuristic demos
-Phase 1 (GRPO):       train_grpo_live() — TRL GRPOTrainer + environment_factory
-                       with procedural scenarios, trajectory filtering, and adversarial attacker
+Phase 1 (GRPO):       runs in notebooks/round2_training_colab.ipynb using
+                      TRL GRPOTrainer + environment_factory.
 
-All modules are wired in here — not standalone.
+Important:
+- This script is intentionally a Phase-0 SFT warmup entrypoint.
+- GRPO lives in the notebook to keep hackathon Colab runs reproducible.
 """
 
 from __future__ import annotations
@@ -196,7 +198,12 @@ def train_sft(examples: list[dict[str, str]], model_name: str,
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Phase 0: Expert SFT warmup")
+    parser = argparse.ArgumentParser(
+        description=(
+            "Phase 0 only: Expert trajectory collection + SFT warmup. "
+            "For GRPO training, run notebooks/round2_training_colab.ipynb."
+        )
+    )
     parser.add_argument("--env-base-url", default="http://localhost:8000")
     parser.add_argument("--episodes", type=int, default=20)
     parser.add_argument("--task", default="easy")
@@ -209,6 +216,10 @@ def main() -> None:
     parser.add_argument("--epochs", type=int, default=1)
     parser.add_argument("--collect-only", action="store_true")
     args = parser.parse_args()
+    print(
+        "[INFO] training/train_grpo.py executes Phase-0 SFT warmup only. "
+        "Use notebooks/round2_training_colab.ipynb for GRPO."
+    )
 
     examples = collect_examples(
         env_base_url=args.env_base_url, task=args.task, episodes=args.episodes,
