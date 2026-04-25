@@ -1,0 +1,6 @@
+algorithm: grpo
+fallback_algorithm: ppo
+episodes: 20
+learning_rate: 2e-5
+lora_r: 16
+lora_alpha: 32

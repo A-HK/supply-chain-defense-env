@@ -1,0 +1,2 @@
+transitions_path: artifacts/transitions.jsonl
+model_output: artifacts/world_model.json

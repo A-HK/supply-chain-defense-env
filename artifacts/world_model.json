@@ -1,0 +1,182 @@
+{
+  "avg_reward_delta": 0.03703703703703704,
+  "feature_action_stats": {
+    "cmd=scan_logs|score=0.0|active=0|secrets=0|uncertainty=1.0": {
+      "predicted_value": 0.019999999999999997,
+      "sample_count": 13.0
+    },
+    "cmd=quarantine|score=0.0|active=1|secrets=5|uncertainty=0.5": {
+      "predicted_value": 0.6,
+      "sample_count": 4.0
+    },
+    "cmd=rotate_secret|score=0.5|active=0|secrets=5|uncertainty=0.5": {
+      "predicted_value": 0.19,
+      "sample_count": 4.0
+    },
+    "cmd=rotate_secret|score=0.5|active=0|secrets=4|uncertainty=0.5": {
+      "predicted_value": 0.18999999999999995,
+      "sample_count": 4.0
+    },
+    "cmd=rotate_secret|score=0.6|active=0|secrets=3|uncertainty=0.5": {
+      "predicted_value": 0.19000000000000006,
+      "sample_count": 4.0
+    },
+    "cmd=rotate_secret|score=0.7|active=0|secrets=2|uncertainty=0.5": {
+      "predicted_value": 0.12999999999999995,
+      "sample_count": 4.0
+    },
+    "cmd=rotate_secret|score=0.7|active=0|secrets=1|uncertainty=0.5": {
+      "predicted_value": 0.19000000000000006,
+      "sample_count": 4.0
+    },
+    "cmd=scan_logs|score=0.8|active=0|secrets=0|uncertainty=0.5": {
+      "predicted_value": 0.02,
+      "sample_count": 4.0
+    },
+    "cmd=inspect_package|score=0.8|active=0|secrets=0|uncertainty=0.4": {
+      "predicted_value": 0.009999999999999998,
+      "sample_count": 12.0
+    },
+    "cmd=check_dependents|score=0.8|active=0|secrets=0|uncertainty=0.4": {
+      "predicted_value": 0.01,
+      "sample_count": 4.0
+    },
+    "cmd=notify|score=0.8|active=0|secrets=0|uncertainty=0.4": {
+      "predicted_value": 0.056666749999999995,
+      "sample_count": 16.0
+    },
+    "cmd=notify|score=0.9|active=0|secrets=0|uncertainty=0.4": {
+      "predicted_value": 0.05666666666666669,
+      "sample_count": 24.0
+    },
+    "cmd=check_dependents|score=0.9|active=0|secrets=0|uncertainty=0.4": {
+      "predicted_value": 0.01,
+      "sample_count": 4.0
+    },
+    "cmd=notify|score=1.0|active=0|secrets=0|uncertainty=0.4": {
+      "predicted_value": 0.05666649999999997,
+      "sample_count": 8.0
+    },
+    "cmd=check_dependents|score=1.0|active=0|secrets=0|uncertainty=0.4": {
+      "predicted_value": -0.01,
+      "sample_count": 4.0
+    },
+    "cmd=quarantine|score=0.0|active=1|secrets=5|uncertainty=0.4": {
+      "predicted_value": 0.6,
+      "sample_count": 2.0
+    },
+    "cmd=rotate_secret|score=0.5|active=0|secrets=5|uncertainty=0.4": {
+      "predicted_value": 0.19,
+      "sample_count": 2.0
+    },
+    "cmd=rotate_secret|score=0.5|active=0|secrets=4|uncertainty=0.4": {
+      "predicted_value": 0.18999999999999995,
+      "sample_count": 2.0
+    },
+    "cmd=rotate_secret|score=0.6|active=0|secrets=3|uncertainty=0.4": {
+      "predicted_value": 0.19000000000000006,
+      "sample_count": 2.0
+    },
+    "cmd=rotate_secret|score=0.7|active=0|secrets=2|uncertainty=0.4": {
+      "predicted_value": 0.12999999999999995,
+      "sample_count": 2.0
+    },
+    "cmd=rotate_secret|score=0.7|active=0|secrets=1|uncertainty=0.4": {
+      "predicted_value": 0.19000000000000006,
+      "sample_count": 2.0
+    },
+    "cmd=scan_logs|score=0.8|active=0|secrets=0|uncertainty=0.4": {
+      "predicted_value": 0.02,
+      "sample_count": 2.0
+    },
+    "cmd=inspect_package|score=0.8|active=0|secrets=0|uncertainty=0.3": {
+      "predicted_value": 0.01,
+      "sample_count": 9.0
+    },
+    "cmd=check_dependents|score=0.8|active=0|secrets=0|uncertainty=0.3": {
+      "predicted_value": 0.01,
+      "sample_count": 3.0
+    },
+    "cmd=notify|score=0.8|active=0|secrets=0|uncertainty=0.3": {
+      "predicted_value": 0.05666674999999999,
+      "sample_count": 12.0
+    },
+    "cmd=notify|score=0.9|active=0|secrets=0|uncertainty=0.3": {
+      "predicted_value": 0.05666666666666669,
+      "sample_count": 18.0
+    },
+    "cmd=check_dependents|score=0.9|active=0|secrets=0|uncertainty=0.3": {
+      "predicted_value": 0.01,
+      "sample_count": 3.0
+    },
+    "cmd=notify|score=1.0|active=0|secrets=0|uncertainty=0.3": {
+      "predicted_value": 0.056666499999999974,
+      "sample_count": 6.0
+    },
+    "cmd=check_dependents|score=1.0|active=0|secrets=0|uncertainty=0.3": {
+      "predicted_value": -0.01,
+      "sample_count": 3.0
+    },
+    "cmd=scan_logs|score=0.0|active=0|secrets=0|uncertainty=0.9": {
+      "predicted_value": 0.02,
+      "sample_count": 3.0
+    },
+    "cmd=quarantine|score=0.0|active=1|secrets=5|uncertainty=0.3": {
+      "predicted_value": 0.6,
+      "sample_count": 2.0
+    },
+    "cmd=rotate_secret|score=0.5|active=0|secrets=5|uncertainty=0.3": {
+      "predicted_value": 0.19,
+      "sample_count": 2.0
+    },
+    "cmd=rotate_secret|score=0.5|active=0|secrets=4|uncertainty=0.3": {
+      "predicted_value": 0.18999999999999995,
+      "sample_count": 2.0
+    },
+    "cmd=rotate_secret|score=0.6|active=0|secrets=3|uncertainty=0.3": {
+      "predicted_value": 0.19000000000000006,
+      "sample_count": 2.0
+    },
+    "cmd=rotate_secret|score=0.7|active=0|secrets=2|uncertainty=0.3": {
+      "predicted_value": 0.12999999999999995,
+      "sample_count": 2.0
+    },
+    "cmd=rotate_secret|score=0.7|active=0|secrets=1|uncertainty=0.3": {
+      "predicted_value": 0.19000000000000006,
+      "sample_count": 2.0
+    },
+    "cmd=scan_logs|score=0.8|active=0|secrets=0|uncertainty=0.3": {
+      "predicted_value": 0.02,
+      "sample_count": 2.0
+    },
+    "cmd=inspect_package|score=0.8|active=0|secrets=0|uncertainty=0.1": {
+      "predicted_value": 0.01,
+      "sample_count": 3.0
+    },
+    "cmd=check_dependents|score=0.8|active=0|secrets=0|uncertainty=0.1": {
+      "predicted_value": 0.01,
+      "sample_count": 1.0
+    },
+    "cmd=notify|score=0.8|active=0|secrets=0|uncertainty=0.1": {
+      "predicted_value": 0.05666674999999998,
+      "sample_count": 4.0
+    },
+    "cmd=notify|score=0.9|active=0|secrets=0|uncertainty=0.1": {
+      "predicted_value": 0.05666666666666668,
+      "sample_count": 6.0
+    },
+    "cmd=check_dependents|score=0.9|active=0|secrets=0|uncertainty=0.1": {
+      "predicted_value": 0.01,
+      "sample_count": 1.0
+    },
+    "cmd=notify|score=1.0|active=0|secrets=0|uncertainty=0.1": {
+      "predicted_value": 0.056666499999999974,
+      "sample_count": 2.0
+    },
+    "cmd=check_dependents|score=1.0|active=0|secrets=0|uncertainty=0.1": {
+      "predicted_value": -0.01,
+      "sample_count": 1.0
+    }
+  },
+  "transition_count": 216
+}

@@ -1,0 +1,3 @@
+use_planner: true
+replan_on_stall_steps: 4
+replan_on_uncertainty: 0.7

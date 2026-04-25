@@ -4,6 +4,18 @@ Version: 0.1.0
 Summary: Agentic Security Lab environment for OpenEnv
 Requires-Python: >=3.10
 Requires-Dist: openenv-core[core]>=0.2.2
+Requires-Dist: fastapi>=0.115.0
+Requires-Dist: httpx>=0.27.0
+Requires-Dist: matplotlib>=3.8.0
+Requires-Dist: pydantic>=2.8.0
+Requires-Dist: pyyaml>=6.0.1
+Requires-Dist: uvicorn>=0.30.0
 Provides-Extra: dev
 Requires-Dist: pytest>=8.0.0; extra == "dev"
 Requires-Dist: pytest-cov>=4.0.0; extra == "dev"
+Provides-Extra: train
+Requires-Dist: accelerate>=0.34.0; extra == "train"
+Requires-Dist: datasets>=2.21.0; extra == "train"
+Requires-Dist: peft>=0.12.0; extra == "train"
+Requires-Dist: transformers>=4.44.0; extra == "train"
+Requires-Dist: trl>=0.10.1; extra == "train"

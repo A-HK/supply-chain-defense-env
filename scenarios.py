@@ -1,11 +1,6 @@
-"""
-Three deterministic task scenarios:
-  easy   – single compromised package, 2 secrets, 3 consumers
-  medium – transitive dependency attack, 5 secrets, 12 consumers
-  hard   – coordinated multi-package campaign (PhantomRaven-style),
-           8 secrets, CI/CD credentials live, attacker actively exfiltrating
-"""
+"""Scenario definitions and curriculum sampling for round 2."""
 import copy
+import random
 from typing import Any
 
 
@@ -67,6 +62,11 @@ SCENARIOS: dict[str, dict[str, Any]] = {
                 "body=<base64 blob of process.env> — SUSPICIOUS"
             ),
         },
+        "hidden_iocs": [
+            "Suspicious timezone drift in CI runner token usage.",
+            "One deploy key used from two regions in <5m.",
+        ],
+        "stochastic": {"progress_jitter": 0.25, "alert_reveal_chance": 0.35},
     },
 
     # ── MEDIUM ────────────────────────────────────────────────────────────────
@@ -149,6 +149,12 @@ SCENARIOS: dict[str, dict[str, Any]] = {
                 "No IOCs found in node-fetch itself. Check its dependencies."
             ),
         },
+        "hidden_iocs": [
+            "Container image digest mismatch in reporting-service.",
+            "Webhook signer mismatch observed in one failed retry path.",
+            "IAM key used outside normal deployment window.",
+        ],
+        "stochastic": {"progress_jitter": 0.35, "alert_reveal_chance": 0.4},
     },
 
     # ── HARD ──────────────────────────────────────────────────────────────────
@@ -217,6 +223,13 @@ SCENARIOS: dict[str, dict[str, Any]] = {
             "lodash@4.17.21":        "Legitimate. No IOCs.",
             "express@4.18.2":        "Legitimate. No IOCs.",
         },
+        "hidden_iocs": [
+            "Unexpected artifact publish from a temporary branch.",
+            "Nightly build runner reused by unrelated workflows.",
+            "Secret scanning bypass pattern detected in one project.",
+            "OAuth token refresh from unknown user-agent.",
+        ],
+        "stochastic": {"progress_jitter": 0.45, "alert_reveal_chance": 0.5},
     },
 }
 
@@ -225,3 +238,27 @@ def get_scenario(task_name: str) -> dict[str, Any]:
     if task_name not in SCENARIOS:
         raise ValueError(f"Unknown task '{task_name}'. Choose from: {list(SCENARIOS)}")
     return copy.deepcopy(SCENARIOS[task_name])
+
+
+def generate_scenario(task_name: str, difficulty_scale: float = 1.0) -> dict[str, Any]:
+    """Return a slightly perturbed scenario used for curriculum/self-improvement."""
+    base = get_scenario(task_name)
+    jitter = max(0.8, min(1.25, difficulty_scale))
+
+    max_steps = max(12, int(base["max_steps"] * (1.1 - (jitter - 1.0) * 0.5)))
+    exfiltration = max(4, int(base["exfiltration_step"] * (1.0 - (jitter - 1.0) * 0.6)))
+    base["max_steps"] = max_steps
+    base["exfiltration_step"] = min(max_steps - 1, exfiltration)
+
+    progress_jitter = base.get("stochastic", {}).get("progress_jitter", 0.3)
+    base["stochastic"]["progress_jitter"] = min(0.65, progress_jitter * jitter)
+    base["stochastic"]["alert_reveal_chance"] = min(
+        0.75,
+        base["stochastic"].get("alert_reveal_chance", 0.35) + random.uniform(-0.05, 0.08),
+    )
+
+    random.shuffle(base["hidden_iocs"])
+    if jitter > 1.1 and len(base["hidden_iocs"]) > 1:
+        base["hidden_iocs"] = base["hidden_iocs"][: max(1, len(base["hidden_iocs"]) - 1)]
+
+    return base

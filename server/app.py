@@ -1,18 +1,17 @@
 """
-FastAPI server — exposes the environment over HTTP.
+FastAPI server - exposes the environment over HTTP.
 """
 import os
+
 from fastapi import FastAPI
 from pydantic import BaseModel
 
-from models import (
-    AgenticSecurityLabAction,
-    AgenticSecurityLabObservation,
-    AgenticSecurityLabState,
-)
+from models import AgenticSecurityLabAction, AgenticSecurityLabObservation, AgenticSecurityLabState
 from server.agentic_security_lab_environment import AgenticSecurityLabEnvironment
 
 TASK_NAME = os.getenv("TASK_NAME", "easy")
+DEFAULT_MODE = os.getenv("AGENTIC_SECURITY_LAB_MODE", "benchmark")
+DEFAULT_FALLBACK = os.getenv("AGENTIC_SECURITY_LAB_COMMAND_FALLBACK", "false").lower() == "true"
 
 env = AgenticSecurityLabEnvironment(task_name=TASK_NAME)
 
@@ -29,6 +28,8 @@ app = FastAPI(
 
 class ResetRequest(BaseModel):
     task_name: str | None = None
+    mode: str | None = None
+    command_fallback_enabled: bool | None = None
 
 
 class StepRequest(BaseModel):
@@ -38,7 +39,13 @@ class StepRequest(BaseModel):
 
 @app.post("/reset", response_model=AgenticSecurityLabObservation)
 def reset(req: ResetRequest = ResetRequest()):
-    return env.reset(task_name=req.task_name)
+    return env.reset(
+        task_name=req.task_name,
+        mode=req.mode or DEFAULT_MODE,
+        command_fallback_enabled=(
+            DEFAULT_FALLBACK if req.command_fallback_enabled is None else req.command_fallback_enabled
+        ),
+    )
 
 
 @app.post("/step", response_model=AgenticSecurityLabObservation)
@@ -63,6 +70,7 @@ def root():
         "name": "agentic-security-lab",
         "version": "1.0.0",
         "tasks": ["easy", "medium", "hard"],
+        "modes": ["benchmark", "training"],
         "endpoints": ["/reset", "/step", "/state", "/health"],
     }
 

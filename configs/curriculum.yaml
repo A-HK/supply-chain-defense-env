@@ -1,0 +1,5 @@
+start_level: 1.0
+min_level: 0.85
+max_level: 1.25
+up_threshold: 0.8
+down_threshold: 0.3

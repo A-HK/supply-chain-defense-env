@@ -1,13 +1,10 @@
 spec_version: 1
 
 name: agentic-security-lab
-version: "1.0.0"
+version: "2.0.0"
 description: >
-  Supply Chain Incident Response — an RL environment where an agent must
-  contain a real-world npm/PyPI supply chain attack by quarantining malicious
-  packages, rotating exposed secrets, and notifying affected teams before the
-  attacker exfiltrates credentials. Inspired by the Axios/LiteLLM/PhantomRaven
-  incidents of 2025-2026.
+  Round 2 OpenEnv environment for long-horizon planning, world modeling, and
+  self-improvement RL in a supply-chain incident response simulation.
 
 type: step-reset
 
@@ -17,6 +14,9 @@ tags:
   - supply-chain
   - devops
   - incident-response
+  - long-horizon
+  - world-modeling
+  - self-improvement
 
 tasks:
   - name: easy
@@ -78,17 +78,17 @@ observation_space:
     steps_remaining: int
     exposed_secrets: list[string]
     active_malicious_packages: list[string]
+    visible_alerts: list[string]
+    uncertainty_score: float
+    plan_progress: dict
+    info: dict
     error: optional[string]
 
 reward:
-  min: -0.20
-  max: 0.55
+  min: -0.30
+  max: 0.70
   shaped: true
   description: >
-    Dense per-step reward. Quarantine correct package +0.15, rotate critical
-    secret +0.12, rotate standard secret +0.06, notify team +0.04,
-    scan_logs +0.02, inspect_package +0.01, check_dependents +0.01.
-    Penalties: quarantine clean package -0.05, re-rotate -0.02,
-    invalid command -0.01. Episode bonuses on conclude: all quarantined +0.10,
-    all rotated +0.10, all notified +0.05, contained before exfil +0.10,
-    attacker succeeded -0.20.
+    Multi-component reward and verifier setup with dense step rewards, delayed
+    terminal bonuses, and anti-hacking penalties. Includes planning progress
+    and partial-observability dynamics for long-horizon training.

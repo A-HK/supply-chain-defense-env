@@ -1,202 +1,212 @@
-"""
-inference.py — agentic_security_lab/inference.py  (project root)
-=================================================================
-Mandatory stdout format:
-    [START] task=<n> env=agentic-security-lab model=<model>
-    [STEP]  step=<n> action=<json> reward=<0.00> done=<true|false> error=<msg|null>
-    [END]   success=<true|false> steps=<n> score=<0.00> rewards=<r1,r2,...>
+"""Hackathon-format baseline inference for Agentic Security Lab."""
 
-Env vars (set in HF Space secrets):
-    API_BASE_URL    LLM endpoint  — default: HF inference router
-    MODEL_NAME      model id      — default: Qwen/Qwen2.5-7B-Instruct
-    HF_TOKEN        API key       — injected automatically by the validator
-    ENV_BASE_URL    Space URL     — default: localhost (validator sets this)
-    TASK_NAME       easy|medium|hard  (omit to run all three)
-"""
+from __future__ import annotations
+
 import json
 import os
 import textwrap
-from typing import Optional
+from typing import Any
 
 import httpx
 from openai import OpenAI
 
-# ── Configuration ──────────────────────────────────────────────────────────────
-# Defaults match what the hackathon validator injects.
-# HF_TOKEN is set automatically by the validator — do not hardcode it.
+from planning import LongHorizonPlanner, PlanMemory, Replanner
+from world_model.model import LightweightWorldModel
+from world_model.rollout import choose_best_action
+
 API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
-MODEL_NAME   = os.getenv("MODEL_NAME",   "Qwen/Qwen2.5-7B-Instruct")
-API_KEY      = os.getenv("HF_TOKEN") or os.getenv("API_KEY") or ""
+MODEL_NAME = os.getenv("MODEL_NAME", "Qwen/Qwen2.5-7B-Instruct")
+API_KEY = os.getenv("HF_TOKEN") or os.getenv("API_KEY") or ""
 ENV_BASE_URL = os.getenv("ENV_BASE_URL", "http://localhost:8000")
+TASK_NAME = os.getenv("TASK_NAME", "")
+USE_PLANNER = os.getenv("USE_PLANNER", "1") == "1"
+WORLD_MODEL_PATH = os.getenv("WORLD_MODEL_PATH", "artifacts/world_model.json")
 
 ALL_TASKS = ["easy", "medium", "hard"]
-MAX_STEPS = 30
 BENCHMARK = "agentic-security-lab"
 
-SYSTEM_PROMPT = textwrap.dedent("""
-    You are an expert security engineer responding to a supply-chain incident.
-    Issue ONE action per turn as a JSON object with keys "command" and "parameters".
+SYSTEM_PROMPT = textwrap.dedent(
+    """
+    You are responding to a live software supply-chain compromise.
+    Return exactly one JSON object with keys "command" and "parameters".
 
-    Commands:
-      inspect_package   {"package": "<name@version>"}
-      check_dependents  {"package": "<name@version>"}
-      rotate_secret     {"secret": "<SECRET_NAME>"}
-      quarantine        {"package": "<name@version>"}
-      notify            {"team": "<team-name>"}
-      scan_logs         {"package": "<name@version>"}
-      conclude          {}
+    Valid commands:
+    - inspect_package {"package": "<name@version>"}
+    - check_dependents {"package": "<name@version>"}
+    - rotate_secret {"secret": "<SECRET_NAME>"}
+    - quarantine {"package": "<name@version>"}
+    - notify {"team": "<team-name>"}
+    - scan_logs {"package": "<name@version>"}
+    - conclude {}
 
-    Strategy:
-      1. scan_logs / inspect_package on all packages to identify IOCs.
-      2. quarantine every malicious package immediately.
-      3. check_dependents to find all affected downstream teams.
-      4. rotate_secret for every exposed credential — critical ones first.
-      5. notify every affected team.
-      6. conclude when done.
+    Prioritize: investigate, trace root cause, contain, rotate secrets, notify teams, conclude.
+    Reply with JSON only.
+    """
+).strip()
 
-    Reply with ONLY the JSON object. No markdown, no explanation, no prose.
-    Example: {"command": "quarantine", "parameters": {"package": "axios@1.7.4"}}
-""").strip()
-
-
-# ── Logging helpers ────────────────────────────────────────────────────────────
 
 def log_start(task: str, model: str) -> None:
     print(f"[START] task={task} env={BENCHMARK} model={model}", flush=True)
 
 
-def log_step(step: int, action: str, reward: float, done: bool,
-             error: Optional[str]) -> None:
+def log_step(step: int, action: str, reward: float, done: bool, error: str | None) -> None:
+    error_value = error if error else "null"
     print(
-        f"[STEP] step={step} action={action} "
-        f"reward={reward:.2f} done={str(done).lower()} "
-        f"error={error if error else 'null'}",
+        f"[STEP] step={step} action={action} reward={reward:.2f} "
+        f"done={str(done).lower()} error={error_value}",
         flush=True,
     )
 
 
-def log_end(success: bool, steps: int, score: float,
-            rewards: list) -> None:
-    rewards_str = ",".join(f"{r:.2f}" for r in rewards)
+def log_end(success: bool, steps: int, score: float, rewards: list[float]) -> None:
+    rewards_value = ",".join(f"{reward:.2f}" for reward in rewards)
     print(
         f"[END] success={str(success).lower()} steps={steps} "
-        f"score={score:.2f} rewards={rewards_str}",
+        f"score={score:.3f} rewards={rewards_value}",
         flush=True,
     )
 
 
-# ── Environment helpers ────────────────────────────────────────────────────────
-
-def env_reset(http: httpx.Client, task_name: str) -> dict:
-    r = http.post("/reset", json={"task_name": task_name})
-    r.raise_for_status()
-    return r.json()
+def env_reset(http: httpx.Client, task_name: str) -> dict[str, Any]:
+    response = http.post("/reset", json={"task_name": task_name, "mode": "benchmark"})
+    response.raise_for_status()
+    return response.json()
 
 
-def env_step(http: httpx.Client, command: str, parameters: dict) -> dict:
-    r = http.post("/step", json={"command": command, "parameters": parameters})
-    r.raise_for_status()
-    return r.json()
+def env_step(http: httpx.Client, command: str, parameters: dict[str, Any]) -> dict[str, Any]:
+    response = http.post("/step", json={"command": command, "parameters": parameters})
+    response.raise_for_status()
+    return response.json()
 
 
-# ── Action parsing ─────────────────────────────────────────────────────────────
-
-def parse_action(raw: str) -> tuple:
+def parse_action(raw: str) -> tuple[str, dict[str, Any]]:
     text = raw.strip()
     if text.startswith("```"):
-        lines = text.splitlines()
-        text  = "\n".join(l for l in lines if not l.startswith("```")).strip()
+        lines = [line for line in text.splitlines() if not line.startswith("```")]
+        text = "\n".join(lines).strip()
     try:
-        obj = json.loads(text)
-        return obj.get("command", "conclude"), obj.get("parameters", {})
-    except (json.JSONDecodeError, AttributeError):
+        action = json.loads(text)
+    except json.JSONDecodeError:
         return "conclude", {}
+    return action.get("command", "conclude"), action.get("parameters", {})
 
 
-# ── Episode runner ─────────────────────────────────────────────────────────────
+def build_messages(observation: dict[str, Any], history: list[dict[str, str]]) -> list[dict[str, str]]:
+    return [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        *history,
+        {"role": "user", "content": observation["result"]},
+    ]
 
-def run_task(llm: OpenAI, http: httpx.Client, task_name: str) -> float:
-    rewards = []
-    step_n  = 0
-    success = False
-    score   = 0.0
 
-    log_start(task=task_name, model=MODEL_NAME)
+def candidate_actions(observation: dict[str, Any], memory: PlanMemory) -> list[dict[str, Any]]:
+    planner = LongHorizonPlanner()
+    plan_actions = planner.build_plan(observation, memory)
+    return plan_actions or [{"command": "conclude", "parameters": {}}]
 
+
+def load_world_model() -> LightweightWorldModel | None:
+    if not os.path.exists(WORLD_MODEL_PATH):
+        return None
     try:
-        obs = env_reset(http, task_name)
+        return LightweightWorldModel.load(WORLD_MODEL_PATH)
+    except Exception:
+        return None
 
-        messages = [
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user",   "content": obs["result"]},
-        ]
 
-        for step_n in range(1, MAX_STEPS + 1):
+def run_task(llm: OpenAI, http: httpx.Client, task_name: str, world_model: LightweightWorldModel | None) -> float:
+    rewards: list[float] = []
+    score = 0.0
+    step_count = 0
+    success = False
+    planner_memory = PlanMemory()
+    replanner = Replanner()
+    last_reward = 0.0
+    history: list[dict[str, str]] = []
 
-            # ── LLM call — wrapped so a transient API error doesn't crash ──
-            try:
-                resp = llm.chat.completions.create(
-                    model       = MODEL_NAME,
-                    messages    = messages,
-                    max_tokens  = 150,
-                    temperature = 0.2,
+    log_start(task_name, MODEL_NAME)
+    try:
+        observation = env_reset(http, task_name)
+        max_steps = int(observation.get("data", {}).get("max_steps", 20))
+        for step_count in range(1, max_steps + 1):
+            planned_action = None
+            if USE_PLANNER:
+                if replanner.should_replan(last_reward, observation, planner_memory):
+                    planner_memory.action_queue = []
+                if not planner_memory.action_queue:
+                    planner_memory.action_queue = candidate_actions(observation, planner_memory)
+                if world_model and planner_memory.action_queue:
+                    imagined = choose_best_action(world_model, planner_memory.action_queue, observation)
+                    if imagined:
+                        planned_action = imagined
+                        planner_memory.action_queue = [
+                            action for action in planner_memory.action_queue if action != planned_action
+                        ]
+                elif planner_memory.action_queue:
+                    planned_action = planner_memory.action_queue.pop(0)
+
+            if planned_action is None:
+                response = llm.chat.completions.create(
+                    model=MODEL_NAME,
+                    messages=build_messages(observation, history),
+                    max_tokens=150,
+                    temperature=0.2,
                 )
-                raw = resp.choices[0].message.content or ""
-            except Exception as llm_err:
-                # Treat LLM failure as a no-op conclude to end gracefully
-                raw = '{"command": "conclude", "parameters": {}}'
-                print(f"[DEBUG] LLM error at step {step_n}: {llm_err}", flush=True)
+                raw = response.choices[0].message.content or ""
+                command, parameters = parse_action(raw)
+            else:
+                command = planned_action["command"]
+                parameters = planned_action["parameters"]
 
-            command, params = parse_action(raw)
-            action_str      = json.dumps({"command": command, "parameters": params})
-
-            # ── Environment step ───────────────────────────────────────────
-            obs    = env_step(http, command, params)
-            reward = float(obs.get("reward", 0.0))
-            done   = bool(obs.get("done", False))
-            error  = obs.get("error") or None
+            action_payload = json.dumps({"command": command, "parameters": parameters})
+            observation = env_step(http, command, parameters)
+            reward = float(observation.get("reward", 0.0))
+            done = bool(observation.get("done", False))
+            error = observation.get("error")
 
             rewards.append(reward)
-            log_step(step=step_n, action=action_str, reward=reward,
-                     done=done, error=error)
+            last_reward = reward
+            if reward > 0 and command in {"scan_logs", "inspect_package"}:
+                planner_memory.mark_completed("investigate")
+            if reward > 0 and command == "check_dependents":
+                planner_memory.mark_completed("trace_root_cause")
+            if reward > 0 and command == "quarantine":
+                planner_memory.mark_completed("contain")
+            if reward > 0 and command == "rotate_secret":
+                planner_memory.mark_completed("recover")
+            if reward > 0 and command == "notify":
+                planner_memory.mark_completed("notify")
+            if done:
+                planner_memory.mark_completed("conclude")
 
-            messages.append({"role": "assistant", "content": raw})
-            messages.append({"role": "user",      "content": obs["result"]})
+            history.extend(
+                [
+                    {"role": "assistant", "content": action_payload},
+                    {"role": "user", "content": observation["result"]},
+                ]
+            )
+            log_step(step_count, action_payload, reward, done, error)
 
+            score = float(observation.get("data", {}).get("benchmark_score", 0.0))
             if done:
                 break
 
-        score   = min(1.0, max(0.0, sum(rewards)))
-        success = score > 0.0
-
-    except Exception as exc:
-        # Always emit [END] — even on unexpected failure
-        log_end(success=False, steps=step_n, score=0.0, rewards=rewards)
+        success = score >= 0.8
+        log_end(success, step_count, score, rewards)
+        return score
+    except Exception:
+        log_end(False, step_count, 0.0, rewards)
         raise
 
-    log_end(success=success, steps=step_n, score=score, rewards=rewards)
-    return score
-
-
-# ── Entry point ────────────────────────────────────────────────────────────────
 
 def main() -> None:
-    llm  = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
-    http = httpx.Client(base_url=ENV_BASE_URL, timeout=60)
+    llm = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
+    world_model = load_world_model()
+    task_names = [TASK_NAME] if TASK_NAME in ALL_TASKS else ALL_TASKS
 
-    task_env = os.getenv("TASK_NAME", "")
-    tasks    = [task_env] if task_env in ALL_TASKS else ALL_TASKS
-
-    scores = {}
-    try:
-        for task in tasks:
-            scores[task] = run_task(llm, http, task)
-    finally:
-        http.close()
-
-    print("\n=== Baseline Results ===", flush=True)
-    for task, s in scores.items():
-        print(f"  {task:8s}  score={s:.2f}", flush=True)
+    with httpx.Client(base_url=ENV_BASE_URL, timeout=60) as http:
+        for task_name in task_names:
+            run_task(llm, http, task_name, world_model)
 
 
 if __name__ == "__main__":
