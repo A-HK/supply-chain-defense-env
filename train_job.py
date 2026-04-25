@@ -101,13 +101,18 @@ CURRENT_DIFFICULTY = "easy"
 ATTACKER = AdversarialAttacker(seed=42)
 
 # ── SecurityIncidentEnv (TRL environment_factory wrapper) ────────────────────
+# Some TRL/Unsloth versions call reward_funcs without the `environments` kwarg.
+# The class-level registry lets reward functions recover env state in that case.
 class SecurityIncidentEnv:
+    _registry: list = []          # populated in __init__, drained by reward fns
+
     def __init__(self):
         self._env = AgenticSecurityLabEnvironment(CURRENT_DIFFICULTY)
         self.cumulative_reward = 0.0
         self.step_rewards = []; self.actions_taken = []
         self.done = False; self.steps_used = 0
         self.task_name = CURRENT_DIFFICULTY; self._last_sig = None
+        SecurityIncidentEnv._registry.append(self)  # register for reward fn fallback
 
     def reset(self, **kwargs) -> str:
         self.cumulative_reward = 0.0; self.step_rewards = []; self.actions_taken = []
@@ -163,13 +168,27 @@ class SecurityIncidentEnv:
 
 
 # ── reward functions ──────────────────────────────────────────────────────────
-def environment_reward(environments, **kwargs):
-    return [env.cumulative_reward * 2.0 for env in environments]
+# Accept both calling conventions:
+#   new TRL/Unsloth: reward_func(completions=..., prompts=...)  → environments=None
+#   old TRL with environment_factory: reward_func(environments=envs, ...)
+def _resolve_envs(completions, environments):
+    """Return env list from kwarg if given, else drain the class registry."""
+    if environments is not None:
+        return environments
+    n = len(completions) if completions is not None else len(SecurityIncidentEnv._registry)
+    envs = SecurityIncidentEnv._registry[:n]
+    del SecurityIncidentEnv._registry[:n]
+    return envs
 
-def efficiency_reward(environments, **kwargs):
-    out = []
+def environment_reward(completions=None, environments=None, **kwargs):
+    envs = _resolve_envs(completions, environments)
+    return [env.cumulative_reward * 2.0 for env in envs]
+
+def efficiency_reward(completions=None, environments=None, **kwargs):
+    envs = _resolve_envs(completions, environments)
     budgets = {"easy": 14, "medium": 18, "hard": 10}
-    for env in environments:
+    out = []
+    for env in envs:
         budget = budgets.get(env.task_name, 14)
         step_ratio = env.steps_used / max(1, budget)
         shaped = 0.18 * (1.0 - step_ratio)
@@ -178,9 +197,10 @@ def efficiency_reward(environments, **kwargs):
         out.append(float(max(-0.2, min(0.2, shaped))))
     return out
 
-def diversity_reward(environments, **kwargs):
+def diversity_reward(completions=None, environments=None, **kwargs):
+    envs = _resolve_envs(completions, environments)
     rewards = []
-    for env in environments:
+    for env in envs:
         actions = list(env.actions_taken)
         n = len(actions)
         if n < 3:
