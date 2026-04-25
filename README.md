@@ -299,4 +299,3 @@ Open [notebooks/round2_training_colab.ipynb](notebooks/round2_training_colab.ipy
 
 - **HF Space**: [A-HK/agentic-security-lab](https://huggingface.co/spaces/A-HK/agentic-security-lab)
 - **Training notebook**: [notebooks/round2_training_colab.ipynb](notebooks/round2_training_colab.ipynb)
-- **Blog / video / slides**: `<ADD_LINK>`
