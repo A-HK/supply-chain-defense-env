@@ -9,297 +9,294 @@ app_port: 8000
 base_path: /web
 tags:
   - openenv
+  - rl-environment
   - security
   - supply-chain
   - incident-response
+  - grpo
+  - tool-calling
 ---
 
-# Agentic Security Lab: Supply Chain Incident Response
+# Agentic Security Lab
 
-Agentic Security Lab is an OpenEnv environment for training and evaluating agents on a high-stakes workflow: responding to a software supply-chain compromise before attacker exfiltration succeeds.
+**An RL environment where LLMs learn to contain software supply-chain attacks under deadline pressure.**
 
-The benchmark is designed around three Round 2 themes:
+Every day, malicious packages show up on npm and PyPI. When one hits your dependency tree, a security engineer has maybe 15 minutes to figure out what's compromised, quarantine the right packages, rotate the right secrets, and notify every affected team — before the attacker exfiltrates credentials.
 
-- Theme #2: long-horizon planning under deadline pressure
-- Theme #3: world modeling in a partially observable professional workflow
-- Theme #4: self-improvement through rollout collection, policy training, and world-model refresh
+LLMs can't do this well today. They struggle to prioritize under time pressure, miss transitive dependencies, forget to rotate secrets, and panic-quarantine clean packages. This environment exists to train that skill.
 
-## Problem Framing
+> **Space**: [A-HK/agentic-security-lab](https://huggingface.co/spaces/A-HK/agentic-security-lab)  
+> **Notebook**: [notebooks/round2_training_colab.ipynb](notebooks/round2_training_colab.ipynb)  
+> **Hackathon themes**: #2 Long-Horizon Planning, #3 World Modeling, #4 Self-Improvement
 
-When a dependency is compromised, success is not just "spot one IOC." The hard part is sequencing the response:
+---
 
-- inspect suspicious packages,
-- trace blast radius through dependency graphs,
-- quarantine the right package versions,
-- rotate the right secrets in the right order,
-- notify downstream teams before the attacker cashes out.
+## What the agent sees and does
 
-That is the behavior this environment scores.
+The agent starts with an incident alert and a list of packages in scope. It doesn't know which ones are malicious — it has to investigate. At each step it picks one action:
 
-## Threat Context
+| Action | What it does | Reward |
+|--------|-------------|--------|
+| `scan_logs` | Search CI/CD logs for IOCs | +0.02 |
+| `inspect_package` | Check publisher, publish date, IOC indicators | +0.01 |
+| `check_dependents` | Find downstream teams affected | +0.01 |
+| `quarantine` | Yank a malicious package from registry | +0.15 |
+| `rotate_secret` | Revoke and regenerate a credential | +0.12 (critical) / +0.06 |
+| `notify` | Send breach alert to affected team | +0.04 |
+| `conclude` | End the episode | Bonus/penalty based on completeness |
 
-This benchmark is inspired by recent public incident patterns:
+Penalties exist for quarantining clean packages (−0.05), re-rotating secrets (−0.02), and invalid commands (−0.01). There's an attacker on a timer — if critical secrets aren't rotated before the exfiltration deadline, the attacker wins and the episode takes a −0.20 hit.
 
-- Axios npm compromise and downstream credential risk
-- LiteLLM PyPI compromise and urgent secret rotation guidance
-- PhantomRaven-style npm campaigns using slopsquatting and CI/CD token theft
+The benchmark score is deterministic:
 
-The environment itself is deterministic in `benchmark` mode and self-contained; the threat references motivate the task design, but scoring does not depend on external services.
-
-## Scenario Design
-
-Three fixed tasks are included:
-
-- `easy`: one malicious package, two secrets, three downstream teams
-- `medium`: transitive compromise via `form-data@4.0.1`, five secrets, twelve teams
-- `hard`: five malicious packages, eight secrets, twenty teams, tight exfiltration window
-
-Each task uses the same action interface but increases horizon length, blast radius, and coordination load.
-
-## API Contract
-
-### Actions
-
-- `inspect_package` with `{"package": "<name@version>"}`
-- `check_dependents` with `{"package": "<name@version>"}`
-- `rotate_secret` with `{"secret": "<SECRET_NAME>"}`
-- `quarantine` with `{"package": "<name@version>"}`
-- `notify` with `{"team": "<team-name>"}`
-- `scan_logs` with `{"package": "<name@version>"}`
-- `conclude` with `{}`
-
-### Reset Options
-
-`POST /reset` supports:
-
-- `task_name`
-- `mode=benchmark|training`
-- `command_fallback_enabled=true|false`
-
-Invalid mode values fall back to `benchmark` and the fallback is reported in state and evaluator telemetry.
-
-### Observation Fields
-
-Each step returns:
-
-- `reward`: dense training reward for the current action
-- `data.benchmark_score`: deterministic evaluator score in `[0, 1]`
-- `data.score_breakdown`: `quarantine_ratio`, `rotate_ratio`, `notify_ratio`, `contain_ratio`
-- `data.evaluator_metrics`: invalid actions, false positives, mode fallback, command fallback count, deadline status
-- `active_malicious_packages`: confirmed malicious packages not yet quarantined
-- `exposed_secrets`: discovered secrets not yet rotated
-
-The environment no longer leaks all malicious packages or secrets at reset. Discovery must come from package inspection, log scans, and dependency tracing.
-
-## Deterministic Grading
-
-The benchmark score is computed from the current state:
-
-`score = 0.35 * quarantine_ratio + 0.35 * rotate_ratio + 0.20 * notify_ratio + 0.10 * contain_ratio`
-
-Implementation details:
-
-- `quarantine_ratio` = required malicious packages quarantined / total required malicious packages
-- `rotate_ratio` = required secrets rotated / total required secrets
-- `notify_ratio` = required teams notified / total required teams
-- `contain_ratio` = `1.0` only when all required malicious packages are contained and the attacker has not succeeded
-- score is clamped to `[0, 1]` and rounded to 6 decimals
-
-This score is separate from the dense per-step training reward.
-
-## Reward Design
-
-Dense reward shaping is preserved for rollout learning:
-
-- correct malicious package quarantine: `+0.15`
-- rotate critical secret: `+0.12`
-- rotate non-critical secret: `+0.06`
-- notify affected team: `+0.04`
-- scan logs: `+0.02`
-- inspect/check dependency metadata: `+0.01`
-
-Penalties:
-
-- false-positive quarantine: `-0.05`
-- re-rotate an already rotated secret: `-0.02`
-- invalid target or unknown command: `-0.01`
-- immediate or low-progress conclude: negative reward instead of a free bonus
-
-## Planner, World Model, and Training
-
-The repo now includes:
-
-- `planning/`: plan memory, goal progression, and replanning logic
-- `world_model/`: transition-conditioned action ranking model trained from collected rollouts
-- `training/train_grpo.py`: live-environment rollout collection plus TRL-backed LoRA policy training
-- `training/self_improve.py`: repeated collect -> train -> rebuild world model loop
-- `notebooks/round2_training_colab.ipynb`: Colab notebook that installs deps, starts the server, trains, evaluates, and exports plots
-
-## Quick Start
-
-### Install
-
-```bash
-pip install -U openenv-core
-pip install -e .
+```
+score = 0.35 × quarantine_ratio + 0.35 × rotate_ratio + 0.20 × notify_ratio + 0.10 × contain_ratio
 ```
 
-For training:
+---
 
-```bash
-pip install -e .[train]
+## Why RL, not just prompting
+
+Three reasons this environment genuinely needs RL:
+
+**1. Procedural scenario generation.** The environment doesn't have 3 fixed scenarios anymore — it generates unique incidents from parameterized distributions. Different packages, different attack vectors (typosquatting, dependency confusion, account takeover, protestware, backdoor injection, CI pipeline compromise), different secret sets, different team structures. Every episode is different. You can't memorize your way to a good score.
+
+**2. Partial observability.** In benchmark mode, the agent starts with zero knowledge of which packages are malicious or which secrets are exposed. It must discover this through investigation. The information-gathering vs. time-pressure tradeoff is the core decision the agent learns to optimize.
+
+**3. Sequential dependencies.** You can't notify teams until you've traced dependents. You can't trace dependents until you've identified the malicious package. You can't quarantine confidently until you've scanned logs. The optimal action sequence depends on what you've discovered so far — this is a planning problem, not a classification problem.
+
+---
+
+## The training pipeline
+
+### Model and efficiency
+
+We train `Qwen2.5-3B-Instruct` in 4-bit quantization via Unsloth, with LoRA rank 32. Fits comfortably on a T4 (uses ~5 GB VRAM). The model was chosen for its strong structured-output capability — it reliably generates valid JSON tool calls without SFT warmup.
+
+### GRPO with environment_factory
+
+Training uses TRL's `GRPOTrainer` with `environment_factory` — the recommended path for multi-turn tool-calling environments. Each training rollout:
+
+1. Creates an isolated in-process environment instance (no shared state between parallel rollouts)
+2. The model generates tool calls; TRL parses them and executes them against the environment
+3. The environment returns observations; the model generates the next tool call
+4. This continues until the model calls `conclude` or hits the token limit
+5. Three reward functions score the trajectory: environment reward (dense, ×2 scaled), efficiency bonus (fast completion), and diversity penalty (spam detection)
+
+The group size is 4 (VRAM-constrained on T4). We disable reward std-scaling (`scale_rewards=False`) following the finding from [Understanding R1-Zero-Like Training](https://arxiv.org/abs/2503.20783) that std-scaling creates difficulty bias in multi-turn settings.
+
+### Curriculum learning
+
+Training starts on easy scenarios and advances based on rolling average performance:
+
+- **Easy** (1 malicious package, 2 secrets, 3 teams) → advance when avg reward > threshold
+- **Medium** (transitive dependencies, 5 secrets, 12 teams) → advance when avg reward > threshold  
+- **Hard** (5 packages, 8 secrets, 20 teams, tight deadline) → final stage
+
+This follows the ScalingInter-RL approach ([arXiv 2509.08755](https://arxiv.org/abs/2509.08755)): starting with simple episodes prevents early training collapse, which is a known failure mode when GRPO encounters long horizons from the start.
+
+---
+
+## What makes this environment different
+
+### 1. Procedural scenario generation
+
+`training/procedural_scenarios.py` generates infinite unique incidents:
+
+- 44 real npm/PyPI package names as base vocabulary
+- 11 typosquatting mutations (doubled consonants, character substitution, suffix injection)
+- 6 attack types with distinct investigation patterns
+- Parameterized scaling: number of packages, secrets, teams, exfiltration window all vary by difficulty
+- Dependency chains injected in medium/hard (legit packages that depend on malicious ones)
+
+This is based on the Self-Evolving Curriculum idea ([arXiv 2505.14970](https://arxiv.org/abs/2505.14970)) — treat difficulty selection as a bandit problem, not a fixed schedule.
+
+### 2. Real security API integration
+
+`training/security_apis.py` integrates four production security databases, all free and no API key required:
+
+| API | What it returns | Example |
+|-----|----------------|---------|
+| [OSV.dev](https://osv.dev) | CVE/MAL entries for any package | `ctx` (PyPI) → GHSA-4g82-3jcr-q52w (credential harvester) |
+| [deps.dev](https://deps.dev) | Deprecation status, OpenSSF scorecard, advisories | `lodash@4.17.21` → 3 advisories, not deprecated |
+| [GitHub Advisory DB](https://github.com/advisories) | Full GHSA details, CVSS scores, malware type | `GHSA-4g82-3jcr-q52w` → severity: critical, type: malware |
+| [npm Registry](https://registry.npmjs.org) | Tarball integrity, SLSA signatures, deprecation | `colors@1.4.0` → has SLSA signature |
+
+These create a genuine information-gathering cost. Calling an API burns a step. The agent must learn when external verification is worth the time pressure.
+
+### 3. StarPO-S trajectory filtering
+
+`training/trajectory_filter.py` implements the uncertainty-based filtering from RAGEN ([arXiv 2504.20073](https://arxiv.org/abs/2504.20073)):
+
+- For each batch of GRPO rollouts, compute per-prompt reward standard deviation
+- Keep only the top 50% of prompts by reward variance
+- Prompts where all rollouts succeed (std=0) or all fail (std=0) are uninformative — they don't help the model learn which actions are better
+- Includes a `CollapseDetector` that monitors reward-std over a rolling window and raises alerts if the model is entering the "echo trap" (all outputs becoming identical)
+
+This directly addresses the known multi-turn GRPO instability described in the Turn-PPO paper ([arXiv 2512.17008](https://arxiv.org/abs/2512.17008)).
+
+### 4. Adversarial attacker (self-play)
+
+`training/adversarial_attacker.py` implements an adaptive adversary inspired by SPIRAL ([arXiv 2506.24119](https://arxiv.org/abs/2506.24119)):
+
+The attacker observes the defender's performance across episodes and adapts:
+- **Adds decoy packages** with suspicious-looking publishers but clean code → tests false-positive discipline
+- **Obscures IOCs** by making scan log hints more ambiguous → forces deeper investigation
+- **Tightens deadlines** when the defender is doing well → increases time pressure
+- **Adds dependency chains** that hide the root cause behind transitive deps
+- **Exploits measured blind spots** — if the defender consistently neglects notification, the attacker adds more teams to notify; if rotation is weak, more critical secrets appear
+
+The difficulty level adapts automatically. No manual curriculum tuning needed beyond the initial easy/medium/hard structure.
+
+---
+
+## Existing infrastructure (pre-GRPO)
+
+The codebase also includes components from earlier development:
+
+- **Planning module** (`planning/`): `LongHorizonPlanner` with goal progression (investigate → trace → contain → recover → notify → conclude), `PlanMemory` for state tracking, `Replanner` that triggers re-planning on stalls or high uncertainty
+- **World model** (`world_model/`): Lightweight transition-conditioned model trained from collected rollouts. Predicts expected reward for candidate actions. Used by inference.py to rank planner suggestions before falling back to LLM generation
+- **Expert trajectory collector** (`training/train_grpo.py`): Collects demonstrations using a hand-coded `expert_action()` heuristic, then trains with SFT. This serves as Phase 0 warmup data
+- **Self-improvement loop** (`training/self_improve.py`): Iterates collect → train → rebuild world model across easy/medium/hard
+
+---
+
+## Environment details
+
+### Modes
+
+- **`benchmark`**: Deterministic scenarios (fixed seed per task name). No information leaks at reset — agent must discover everything through investigation. Used for evaluation.
+- **`training`**: Stochastic variation via `generate_scenario()`. Hidden IOCs revealed probabilistically during log scans. Attacker progress has jitter. Used during GRPO training.
+
+### Partial observability
+
+At reset, the agent sees:
+- List of packages in scope (but not which are malicious)
+- Exfiltration deadline (step count)
+- Available commands
+
+It does NOT see:
+- Which packages are malicious (must scan/inspect to discover)
+- Which secrets exist or are exposed (discovered via scan_logs on malicious packages)
+- Which teams are affected (discovered via check_dependents)
+
+This is by design. The test (`tests/test_environment.py`) explicitly validates that `reset()` returns empty `active_malicious_packages` and `exposed_secrets` in benchmark mode.
+
+### Attacker timeline
+
+The attacker advances each step. In benchmark mode, progress is deterministic (1/exfiltration_step per turn). In training mode, there's jitter. When the attacker reaches the exfiltration step and critical secrets haven't been rotated, the attacker succeeds — episode takes a −0.20 penalty and `contain_ratio` drops to 0.
+
+---
+
+## Project structure
+
+```
+├── server/
+│   ├── agentic_security_lab_environment.py   # Core environment logic
+│   └── app.py                                # FastAPI server
+├── training/
+│   ├── procedural_scenarios.py               # Infinite scenario generation
+│   ├── security_apis.py                      # OSV, deps.dev, GHSA, npm integrations
+│   ├── trajectory_filter.py                  # StarPO-S filtering + collapse detection
+│   ├── adversarial_attacker.py               # Adaptive self-play attacker
+│   ├── train_grpo.py                         # Expert trajectory collection + SFT
+│   ├── self_improve.py                       # Multi-round collect-train loop
+│   ├── curriculum.py                         # AdaptiveCurriculum scheduler
+│   ├── callbacks.py                          # JSONL metrics logger
+│   ├── evaluate.py                           # Episode summary stats
+│   ├── plot_metrics.py                       # Reward/loss plot generation
+│   ├── rewards.py                            # Reward component breakdown
+│   └── verifiers.py                          # Holdout pass checks
+├── planning/
+│   ├── planner.py                            # LongHorizonPlanner
+│   ├── plan_memory.py                        # Goal tracking state
+│   ├── replanner.py                          # Stall-triggered replanning
+│   └── metrics.py                            # Plan completion metrics
+├── world_model/
+│   ├── model.py                              # Transition-conditioned ranking model
+│   ├── rollout.py                            # Imagined rollout + action selection
+│   ├── dataset.py                            # Transition JSONL I/O
+│   └── train_world_model.py                  # Fit model from transitions
+├── notebooks/
+│   └── round2_training_colab.ipynb           # Full GRPO training notebook
+├── models.py                                 # Pydantic Action/Observation/State
+├── scenarios.py                              # Fixed + stochastic scenario definitions
+├── graders.py                                # Deterministic benchmark scoring
+├── inference.py                              # Hackathon-format evaluation runner
+├── openenv.yaml                              # OpenEnv manifest
+├── pyproject.toml                            # Package config with [train] extras
+└── Dockerfile                                # Docker build for HF Space
 ```
 
-### Run the Environment
+---
+
+## Quick start
 
 ```bash
-uvicorn server.app:app --host 0.0.0.0 --port 8000 --reload
-```
+# Install
+pip install -e ".[train]"
+pip install unsloth
 
-### Smoke Test
+# Run environment locally
+uvicorn server.app:app --host 0.0.0.0 --port 8000
 
-```bash
+# Smoke test
 curl -X POST http://localhost:8000/reset \
   -H "Content-Type: application/json" \
-  -d '{"task_name":"hard","mode":"benchmark"}'
-```
+  -d '{"task_name":"easy","mode":"benchmark"}'
 
-## Baseline Inference
-
-`inference.py` emits only the required hackathon log lines:
-
-- `[START]`
-- `[STEP]`
-- `[END]`
-
-It uses `benchmark_score` for final scoring instead of summing shaped rewards.
-
-Required environment variables:
-
-- `HF_TOKEN` or compatible API key
-- `API_BASE_URL` and `MODEL_NAME` for model routing
-- `ENV_BASE_URL` for the environment server
-
-Run:
-
-```bash
+# Run inference
 python inference.py
 ```
 
-## Training and Evaluation
+### Training (Colab)
 
-Collect trajectories and train a LoRA policy:
+Open [notebooks/round2_training_colab.ipynb](notebooks/round2_training_colab.ipynb) in Colab with a T4 GPU. The notebook:
 
-```bash
-python training/train_grpo.py \
-  --env-base-url http://localhost:8000 \
-  --task medium \
-  --episodes 12 \
-  --model-name Qwen/Qwen2.5-0.5B-Instruct \
-  --output-dir artifacts/checkpoints/policy
-```
+1. Clones this repo and installs dependencies
+2. Starts the local environment server
+3. Tests procedural scenario generation and security APIs
+4. Loads Qwen2.5-3B-Instruct with Unsloth 4-bit QLoRA
+5. Runs baseline evaluation (untrained model)
+6. Trains with GRPO + environment_factory
+7. Runs post-training evaluation
+8. Generates reward curve, loss curve, before/after comparison, and component score plots
+9. Pushes the trained model to HuggingFace Hub
 
-Train the world model from collected transitions:
+---
 
-```bash
-python world_model/train_world_model.py \
-  --transitions artifacts/transitions.jsonl \
-  --output artifacts/world_model.json
-```
+## Results
 
-Summarize and plot metrics:
-
-```bash
-python training/evaluate.py
-python training/plot_metrics.py
-```
-
-## Colab
-
-The notebook lives at [notebooks/round2_training_colab.ipynb](notebooks/round2_training_colab.ipynb) and keeps the existing file path so it can be linked directly from the submission.
-
-## Validation
-
-Run the local checks before submission:
-
-```bash
-openenv validate
-docker build -t agentic-security-lab .
-```
-
-For the provided validator:
-
-```bash
-./validate-submission.sh https://your-space.hf.space .
-```
-
-## Artifacts
-
-The repo expects the following generated artifacts:
-
-- [artifacts/reward_curve.png](artifacts/reward_curve.png)
-- [artifacts/loss_curve.png](artifacts/loss_curve.png)
-- [artifacts/baseline_vs_trained.png](artifacts/baseline_vs_trained.png)
-- `artifacts/metrics.jsonl`
-- `artifacts/transitions.jsonl`
-- `artifacts/world_model.json`
-
-### Inline Plots
+<!-- TODO: Replace with actual training run plots -->
 
 ![Reward Curve](artifacts/reward_curve.png)
-
-Reward collected across rollout episodes.
+*Episode reward across training rollouts.*
 
 ![Loss Curve](artifacts/loss_curve.png)
-
-Training loss proxy logged during trajectory collection and policy tuning.
+*Training loss during policy optimization.*
 
 ![Baseline vs Trained](artifacts/baseline_vs_trained.png)
+*Before/after comparison across difficulty levels.*
 
-Visual comparison plot used in the submission package.
+---
 
-## Submission Links
+## References
 
-Fill these in before submitting:
+| Paper | What we use from it |
+|-------|-------------------|
+| [GRPO (DeepSeekMath)](https://arxiv.org/abs/2402.03300) | Core training algorithm |
+| [RAGEN / StarPO-S](https://arxiv.org/abs/2504.20073) | Trajectory filtering for training stability |
+| [ScalingInter-RL](https://arxiv.org/abs/2509.08755) | Curriculum horizon scaling |
+| [SPIRAL](https://arxiv.org/abs/2506.24119) | Adversarial self-play design |
+| [Self-Evolving Curriculum](https://arxiv.org/abs/2505.14970) | Bandit-based difficulty selection |
+| [RL-Struct](https://arxiv.org/abs/2512.00319) | Hierarchical reward for structured output |
+| [Pentest-R1](https://arxiv.org/abs/2508.07382) | Two-stage GRPO for security domains |
+| [Understanding R1-Zero Training](https://arxiv.org/abs/2503.20783) | Disabled std-scaling (difficulty bias) |
 
-- Hugging Face Space: `<ADD_PUBLIC_SPACE_URL>`
-- Colab Notebook: [notebooks/round2_training_colab.ipynb](notebooks/round2_training_colab.ipynb)
-- Blog / video / slides: `<ADD_PUBLIC_WRITEUP_URL>`
+---
 
-## Project Structure
+## Submission links
 
-```text
-agentic_security_lab/
-|-- README.md
-|-- openenv.yaml
-|-- inference.py
-|-- models.py
-|-- scenarios.py
-|-- client.py
-|-- pyproject.toml
-|-- Dockerfile
-|-- planning/
-|-- training/
-|-- world_model/
-|-- notebooks/
-|-- artifacts/
-`-- server/
-```
-
-## Current Status
-
-Implemented in code:
-
-- validator-clean packaging
-- benchmark/training modes
-- fallback accounting
-- deterministic benchmark grading
-- hidden-state removal at reset
-- hackathon-format inference logging
-- TRL-backed policy-training entrypoint
-- Colab notebook path retained and updated
-
-Still user-supplied before final submission:
-
-- public HF Space URL
-- public writeup / video / slides link
+- **HF Space**: [A-HK/agentic-security-lab](https://huggingface.co/spaces/A-HK/agentic-security-lab)
+- **Training notebook**: [notebooks/round2_training_colab.ipynb](notebooks/round2_training_colab.ipynb)
+- **Blog / video / slides**: `<ADD_LINK>`
