@@ -258,14 +258,6 @@ Training loss proxy logged during trajectory collection and policy tuning.
 
 Visual comparison plot used in the submission package.
 
-## Submission Links
-
-Fill these in before submitting:
-
-- Hugging Face Space: `<ADD_PUBLIC_SPACE_URL>`
-- Colab Notebook: [notebooks/round2_training_colab.ipynb](notebooks/round2_training_colab.ipynb)
-- Blog / video / slides: `<ADD_PUBLIC_WRITEUP_URL>`
-
 ## Project Structure
 
 ```text
